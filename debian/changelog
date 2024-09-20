@@ -1,8 +1,12 @@
-poppler (22.02.0-3) UNRELEASED; urgency=medium
+poppler (22.02.0-3deepin0) unstable; urgency=medium
 
+  [ Debian freedesktop.org maintainers ]
   * update
 
- -- Debian freedesktop.org maintainers <pkg-freedesktop-maintainers@lists.alioth.debian.org>  Wed, 22 Jun 2022 15:19:23 +0800
+  [ Tianyu Chen ]
+  * No source change upload against GCC 12.
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 20 Sep 2024 12:15:48 +0800
 
 poppler (22.02.0-3) unstable; urgency=medium
 
