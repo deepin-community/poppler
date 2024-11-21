@@ -1,4 +1,4 @@
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 Q_DECLARE_METATYPE(QDate)
 Q_DECLARE_METATYPE(QTime)

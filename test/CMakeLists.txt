@@ -23,7 +23,6 @@ if (GTK_FOUND)
   )
   poppler_add_test(gtk-test BUILD_GTK_TESTS ${gtk_splash_test_SRCS})
   target_link_libraries(gtk-test ${CAIRO_LIBRARIES} poppler-glib PkgConfig::GTK3)
-  target_include_directories(gtk-test SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
 
   if (HAVE_CAIRO)
 
@@ -35,13 +34,17 @@ if (GTK_FOUND)
     )
     poppler_add_test(pdf-inspector BUILD_GTK_TESTS ${pdf_inspector_SRCS})
     target_link_libraries(pdf-inspector ${CAIRO_LIBRARIES} Freetype::Freetype ${common_libs} PkgConfig::GTK3 poppler)
-    target_include_directories(pdf-inspector SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
     target_compile_definitions(pdf-inspector PRIVATE -DSRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   endif ()
 
 endif ()
 
 if (HAVE_CAIRO)
+  include_directories(
+    SYSTEM
+    ${CAIRO_INCLUDE_DIRS}
+  )
+
   include(CheckCXXSymbolExists)
   set (CMAKE_REQUIRED_INCLUDES ${CAIRO_INCLUDE_DIRS})
   check_cxx_symbol_exists(CAIRO_HAS_PNG_FUNCTIONS "cairo.h" HAVE_CAIRO_PNG)
@@ -59,7 +62,6 @@ if (HAVE_CAIRO)
       )
     add_executable(cairo-thread-test ${cairo_thread_test_SRCS})
     target_link_libraries(cairo-thread-test ${CAIRO_LIBRARIES} Freetype::Freetype Threads::Threads poppler)
-    target_include_directories(cairo-thread-test SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
   endif ()
 endif ()
 

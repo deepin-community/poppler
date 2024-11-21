@@ -1,4 +1,4 @@
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 #include <poppler-qt5.h>
 
@@ -16,7 +16,6 @@ private slots:
     void password3();
     void password4();
     void password4b();
-    void password5();
 };
 
 // BUG:4557
@@ -107,18 +106,6 @@ void TestPassword::password4b()
     QVERIFY(doc);
     QVERIFY(doc->isLocked());
     QVERIFY(!doc->unlock("", "user-secret"));
-    QVERIFY(!doc->isLocked());
-
-    delete doc;
-}
-
-void TestPassword::password5()
-{
-    Poppler::Document *doc;
-    doc = Poppler::Document::load(QString::fromUtf8(TESTDATADIR "/unittestcases/PasswordEncryptedReconstructed.pdf"));
-    QVERIFY(doc);
-    QVERIFY(doc->isLocked());
-    QVERIFY(!doc->unlock("", "test"));
     QVERIFY(!doc->isLocked());
 
     delete doc;

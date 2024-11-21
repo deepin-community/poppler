@@ -10,7 +10,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     PopplerPage *page;
     char *buf;
     int npages;
-    GList *matches;
 
     doc = poppler_document_new_from_data((char *)data, size, NULL, &err);
     if (doc == NULL) {
@@ -20,7 +19,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 
     npages = poppler_document_get_n_pages(doc);
     if (npages < 1) {
-        g_object_unref(doc);
         return 0;
     }
 
@@ -33,15 +31,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         if (!page) {
             continue;
         }
-        if (g_utf8_validate(buf, -1, NULL)) {
-            matches = poppler_page_find_text(page, buf);
-            if (matches) {
-                g_list_free_full(matches, (GDestroyNotify)poppler_rectangle_free);
-            }
-        }
+        poppler_page_find_text(page, buf);
         g_object_unref(page);
     }
     free(buf);
-    g_object_unref(doc);
     return 0;
 }

@@ -1,5 +1,5 @@
 #include <QtCore/QScopedPointer>
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 #include "poppler/Object.h"
 

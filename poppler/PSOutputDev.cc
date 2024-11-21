@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Martin Kretzschmar <martink@gnome.org>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2006-2009, 2011-2013, 2015-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2009, 2011-2013, 2015-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2007, 2008 Brad Hards <bradh@kde.org>
 // Copyright (C) 2008, 2009 Koji Otani <sho@bbr.jp>
@@ -35,10 +35,9 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2018 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2019, 2021 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2019, 2021-2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2021, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020, 2021 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -70,7 +69,9 @@
 #include "Catalog.h"
 #include "Page.h"
 #include "Stream.h"
-#include "FlateEncoder.h"
+#ifdef ENABLE_ZLIB
+#    include "FlateEncoder.h"
+#endif
 #ifdef ENABLE_ZLIB_UNCOMPRESS
 #    include "FlateStream.h"
 #endif
@@ -84,7 +85,6 @@
 #include "SplashOutputDev.h"
 #include "PSOutputDev.h"
 #include "PDFDoc.h"
-#include "UTF.h"
 
 #ifdef USE_CMS
 #    include <lcms2.h>
@@ -973,6 +973,18 @@ struct PSOutImgClipRect
 };
 
 //------------------------------------------------------------------------
+
+struct PSOutPaperSize
+{
+    PSOutPaperSize(std::unique_ptr<GooString> &&nameA, int wA, int hA) : name(std::move(nameA)), w(wA), h(hA) { }
+    ~PSOutPaperSize() = default;
+    PSOutPaperSize(const PSOutPaperSize &) = delete;
+    PSOutPaperSize &operator=(const PSOutPaperSize &) = delete;
+    std::unique_ptr<GooString> name;
+    int w, h;
+};
+
+//------------------------------------------------------------------------
 // DeviceNRecoder
 //------------------------------------------------------------------------
 
@@ -1080,11 +1092,13 @@ PSOutputDev::PSOutputDev(const char *fileName, PDFDoc *docA, char *psTitleA, con
     customCodeCbk = customCodeCbkA;
     customCodeCbkData = customCodeCbkDataA;
 
+    fontIDs = nullptr;
     t1FontNames = nullptr;
     font8Info = nullptr;
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
+    paperSizes = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
     haveTextClip = false;
@@ -1137,11 +1151,13 @@ PSOutputDev::PSOutputDev(int fdA, PDFDoc *docA, char *psTitleA, const std::vecto
     customCodeCbk = customCodeCbkA;
     customCodeCbkData = customCodeCbkDataA;
 
+    fontIDs = nullptr;
     t1FontNames = nullptr;
     font8Info = nullptr;
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
+    paperSizes = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
     haveTextClip = false;
@@ -1175,11 +1191,13 @@ PSOutputDev::PSOutputDev(FoFiOutputFunc outputFuncA, void *outputStreamA, char *
     customCodeCbk = customCodeCbkA;
     customCodeCbkData = customCodeCbkDataA;
 
+    fontIDs = nullptr;
     t1FontNames = nullptr;
     font8Info = nullptr;
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
+    paperSizes = nullptr;
     embFontList = nullptr;
     customColors = nullptr;
     haveTextClip = false;
@@ -1295,6 +1313,7 @@ void PSOutputDev::postInit()
 {
     Catalog *catalog;
     PDFRectangle *box;
+    PSOutPaperSize *size;
     int w, h, i;
 
     if (postInitDone || !ok) {
@@ -1312,7 +1331,7 @@ void PSOutputDev::postInit()
         paperMatch = false;
     }
 
-    paperSizes.clear();
+    paperSizes = new std::vector<PSOutPaperSize *>();
     for (const int pg : pages) {
         Page *page = catalog->getPage(pg);
         if (page == nullptr) {
@@ -1347,28 +1366,28 @@ void PSOutputDev::postInit()
         if (h > paperHeight) {
             paperHeight = h;
         }
-        for (i = 0; i < (int)paperSizes.size(); ++i) {
-            const PSOutPaperSize &size = paperSizes[i];
-            if (pageDimensionEqual(w, size.w) && pageDimensionEqual(h, size.h)) {
+        for (i = 0; i < (int)paperSizes->size(); ++i) {
+            size = (*paperSizes)[i];
+            if (pageDimensionEqual(w, size->w) && pageDimensionEqual(h, size->h)) {
                 break;
             }
         }
-        if (i == (int)paperSizes.size()) {
+        if (i == (int)paperSizes->size()) {
             const StandardMedia *media = standardMedia;
-            std::string name;
+            std::unique_ptr<GooString> name;
             while (media->name) {
                 if (pageDimensionEqual(w, media->width) && pageDimensionEqual(h, media->height)) {
-                    name = std::string(media->name);
+                    name = std::make_unique<GooString>(media->name);
                     w = media->width;
                     h = media->height;
                     break;
                 }
                 media++;
             }
-            if (name.empty()) {
+            if (!name) {
                 name = GooString::format("{0:d}x{1:d}mm", int(w * 25.4 / 72), int(h * 25.4 / 72));
             }
-            paperSizes.emplace_back(std::move(name), w, h);
+            paperSizes->push_back(new PSOutPaperSize(std::move(name), w, h));
         }
         pagePaperSize.insert(std::pair<int, int>(pg, i));
         if (!paperMatch) {
@@ -1388,8 +1407,9 @@ void PSOutputDev::postInit()
     }
 
     // initialize fontIDs, fontFileIDs, and fontFileNames lists
-    fontIDs.reserve(64);
-    fontIDs.resize(0);
+    fontIDSize = 64;
+    fontIDLen = 0;
+    fontIDs = (Ref *)gmallocn(fontIDSize, sizeof(Ref));
     for (i = 0; i < 14; ++i) {
         fontNames.emplace(psBase14SubstFonts[i].psName);
     }
@@ -1521,8 +1541,17 @@ PSOutputDev::~PSOutputDev()
         }
 #endif
     }
+    if (paperSizes) {
+        for (auto entry : *paperSizes) {
+            delete entry;
+        }
+        delete paperSizes;
+    }
     if (embFontList) {
         delete embFontList;
+    }
+    if (fontIDs) {
+        gfree(fontIDs);
     }
     if (t1FontNames) {
         for (i = 0; i < t1FontNameLen; ++i) {
@@ -1557,6 +1586,7 @@ PSOutputDev::~PSOutputDev()
 
 void PSOutputDev::writeHeader(int nPages, const PDFRectangle *mediaBox, const PDFRectangle *cropBox, int pageRotate, const char *title)
 {
+    PSOutPaperSize *size;
     double x1, y1, x2, y2;
 
     switch (mode) {
@@ -1570,24 +1600,15 @@ void PSOutputDev::writeHeader(int nPages, const PDFRectangle *mediaBox, const PD
         writePS("%!PS-Adobe-3.0 Resource-Form\n");
         break;
     }
+    writePSFmt("%Produced by poppler pdftops version: {0:s} (http://poppler.freedesktop.org)\n", PACKAGE_VERSION);
     Object info = xref->getDocInfo();
-    std::string creator = GooString::format("poppler pdftops version: {0:s} (http://poppler.freedesktop.org)", PACKAGE_VERSION);
     if (info.isDict()) {
         Object obj1 = info.dictLookup("Creator");
         if (obj1.isString()) {
-            const GooString *pdfCreator = obj1.getString();
-            if (pdfCreator && !pdfCreator->toStr().empty()) {
-                creator.append(". PDF Creator: ");
-                if (hasUnicodeByteOrderMark(pdfCreator->toStr())) {
-                    creator.append(TextStringToUtf8(pdfCreator->toStr()));
-                } else {
-                    creator.append(pdfCreator->toStr());
-                }
-            }
+            writePS("%%Creator: ");
+            writePSTextLine(obj1.getString());
         }
     }
-    writePS("%%Creator: ");
-    writePSTextLine(creator);
     if (title) {
         char *sanitizedTitle = strdup(title);
         for (size_t i = 0; i < strlen(sanitizedTitle); ++i) {
@@ -1610,16 +1631,17 @@ void PSOutputDev::writeHeader(int nPages, const PDFRectangle *mediaBox, const PD
 
     switch (mode) {
     case psModePS:
-        for (std::size_t i = 0; i < paperSizes.size(); ++i) {
-            const PSOutPaperSize &size = paperSizes[i];
-            writePSFmt("%%{0:s} {1:s} {2:d} {3:d} 0 () ()\n", i == 0 ? "DocumentMedia:" : "+", size.name.c_str(), size.w, size.h);
+        for (std::size_t i = 0; i < paperSizes->size(); ++i) {
+            size = (*paperSizes)[i];
+            writePSFmt("%%{0:s} {1:t} {2:d} {3:d} 0 () ()\n", i == 0 ? "DocumentMedia:" : "+", size->name.get(), size->w, size->h);
         }
         writePSFmt("%%BoundingBox: 0 0 {0:d} {1:d}\n", paperWidth, paperHeight);
         writePSFmt("%%Pages: {0:d}\n", nPages);
         writePS("%%EndComments\n");
         if (!paperMatch) {
+            size = (*paperSizes)[0];
             writePS("%%BeginDefaults\n");
-            writePSFmt("%%PageMedia: {0:s}\n", paperSizes[0].name.c_str());
+            writePSFmt("%%PageMedia: {0:t}\n", size->name.get());
             writePS("%%EndDefaults\n");
         }
         break;
@@ -1941,20 +1963,25 @@ void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
     int i, j;
 
     // check if font is already set up
-    for (Ref fontID : fontIDs) {
-        if (fontID == *font->getID()) {
+    for (i = 0; i < fontIDLen; ++i) {
+        if (fontIDs[i] == *font->getID()) {
             return;
         }
     }
 
-    fontIDs.push_back(*font->getID());
+    // add entry to fontIDs list
+    if (fontIDLen >= fontIDSize) {
+        fontIDSize += 64;
+        fontIDs = (Ref *)greallocn(fontIDs, fontIDSize, sizeof(Ref));
+    }
+    fontIDs[fontIDLen++] = *font->getID();
 
     psName = nullptr;
     xs = ys = 1;
     subst = false;
 
     if (font->getType() == fontType3) {
-        psName = new GooString(GooString::format("T3_{0:d}_{1:d}", font->getID()->num, font->getID()->gen));
+        psName = GooString::format("T3_{0:d}_{1:d}", font->getID()->num, font->getID()->gen).release();
         setupType3Font(font, psName, parentResDict);
     } else {
         std::optional<GfxFontLoc> fontLoc = font->locateFont(xref, this);
@@ -2726,13 +2753,13 @@ void PSOutputDev::setupType3Font(GfxFont *font, GooString *psName, Dict *parentR
             Object charProc = charProcs->getVal(i);
             gfx->display(&charProc);
             if (t3String) {
-                std::string buf;
+                std::unique_ptr<GooString> buf;
                 if (t3Cacheable) {
                     buf = GooString::format("{0:.6g} {1:.6g} {2:.6g} {3:.6g} {4:.6g} {5:.6g} setcachedevice\n", t3WX, t3WY, t3LLX, t3LLY, t3URX, t3URY);
                 } else {
                     buf = GooString::format("{0:.6g} {1:.6g} setcharwidth\n", t3WX, t3WY);
                 }
-                (*outputFunc)(outputStream, buf.c_str(), buf.size());
+                (*outputFunc)(outputStream, buf->c_str(), buf->getLength());
                 (*outputFunc)(outputStream, t3String->c_str(), t3String->getLength());
                 delete t3String;
                 t3String = nullptr;
@@ -2757,27 +2784,32 @@ void PSOutputDev::setupType3Font(GfxFont *font, GooString *psName, Dict *parentR
 // font object, and an object ID (font file object for
 GooString *PSOutputDev::makePSFontName(GfxFont *font, const Ref *id)
 {
+    GooString *psName;
     const GooString *s;
 
     if ((s = font->getEmbeddedFontName())) {
-        std::string psName = filterPSName(s->toStr());
-        if (fontNames.emplace(psName).second) {
-            return new GooString(std::move(psName));
+        psName = filterPSName(s->toStr());
+        if (fontNames.emplace(psName->toStr()).second) {
+            return psName;
         }
+        delete psName;
     }
     if (font->getName()) {
-        std::string psName = filterPSName(*font->getName());
-        if (fontNames.emplace(psName).second) {
-            return new GooString(std::move(psName));
+        psName = filterPSName(*font->getName());
+        if (fontNames.emplace(psName->toStr()).second) {
+            return psName;
         }
+        delete psName;
     }
-    GooString *psName = new GooString(GooString::format("FF{0:d}_{1:d}", id->num, id->gen));
+    psName = GooString::format("FF{0:d}_{1:d}", id->num, id->gen).release();
     if ((s = font->getEmbeddedFontName())) {
-        std::string filteredName = filterPSName(s->toStr());
-        psName->append('_')->append(filteredName);
+        s = filterPSName(s->toStr());
+        psName->append('_')->append(s);
+        delete s;
     } else if (font->getName()) {
-        std::string filteredName = filterPSName(*font->getName());
-        psName->append('_')->append(filteredName);
+        s = filterPSName(*font->getName());
+        psName->append('_')->append(s);
+        delete s;
     }
     fontNames.emplace(psName->toStr());
     return psName;
@@ -2876,9 +2908,12 @@ void PSOutputDev::setupImage(Ref id, Stream *str, bool mask)
     if (useCompressed) {
         str = str->getUndecodedStream();
     }
+#ifdef ENABLE_ZLIB
     if (useFlate) {
         str = new FlateEncoder(str);
-    } else if (useLZW) {
+    } else
+#endif
+            if (useLZW) {
         str = new LZWEncoder(str);
     } else if (useRLE) {
         str = new RunLengthEncoder(str);
@@ -3472,6 +3507,7 @@ bool PSOutputDev::checkPageSlice(Page *page, double /*hDPI*/, double /*vDPI*/, i
                 isOptimizedGray = false;
             }
             str0->reset();
+#ifdef ENABLE_ZLIB
             if (useFlate) {
                 if (isOptimizedGray && numComps == 4) {
                     str = new FlateEncoder(new CMYKGrayEncoder(str0));
@@ -3482,7 +3518,9 @@ bool PSOutputDev::checkPageSlice(Page *page, double /*hDPI*/, double /*vDPI*/, i
                 } else {
                     str = new FlateEncoder(str0);
                 }
-            } else if (useLZW) {
+            } else
+#endif
+                    if (useLZW) {
                 if (isOptimizedGray && numComps == 4) {
                     str = new LZWEncoder(new CMYKGrayEncoder(str0));
                     numComps = 1;
@@ -3593,6 +3631,7 @@ void PSOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
     int imgWidth, imgHeight, imgWidth2, imgHeight2;
     bool landscape;
     GooString *s;
+    PSOutPaperSize *paperSize;
 
     if (!postInitDone) {
         postInit();
@@ -3744,8 +3783,8 @@ void PSOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
         ty += (rotate == 0 || rotate == 180) ? imgLLY : -imgLLX;
 
         if (paperMatch) {
-            const PSOutPaperSize &paperSize = paperSizes[pagePaperSize[pageNum]];
-            writePSFmt("%%PageMedia: {0:s}\n", paperSize.name.c_str());
+            paperSize = (*paperSizes)[pagePaperSize[pageNum]];
+            writePSFmt("%%PageMedia: {0:t}\n", paperSize->name.get());
         }
 
         // Create a matrix with the same transform that will be output to PS
@@ -6174,9 +6213,12 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
             if (maskUseCompressed) {
                 maskStr = maskStr->getUndecodedStream();
             }
+#ifdef ENABLE_ZLIB
             if (maskUseFlate) {
                 maskStr = new FlateEncoder(maskStr);
-            } else if (maskUseLZW) {
+            } else
+#endif
+                    if (maskUseLZW) {
                 maskStr = new LZWEncoder(maskStr);
             } else if (maskUseRLE) {
                 maskStr = new RunLengthEncoder(maskStr);
@@ -6218,9 +6260,12 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
         if (inlineImg) {
             // create an array
             str2 = new FixedLengthEncoder(str, len);
+#ifdef ENABLE_ZLIB
             if (getEnableFlate()) {
                 str2 = new FlateEncoder(str2);
-            } else if (getEnableLZW()) {
+            } else
+#endif
+                    if (getEnableLZW()) {
                 str2 = new LZWEncoder(str2);
             } else {
                 str2 = new RunLengthEncoder(str2);
@@ -6447,9 +6492,12 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
         }
 
         // add FlateEncode/LZWEncode/RunLengthEncode and ASCIIHex/85 encode filters
+#ifdef ENABLE_ZLIB
         if (useFlate) {
             str = new FlateEncoder(str);
-        } else if (useLZW) {
+        } else
+#endif
+                if (useLZW) {
             str = new LZWEncoder(str);
         } else if (useRLE) {
             str = new RunLengthEncoder(str);
@@ -6608,25 +6656,25 @@ void PSOutputDev::dumpColorSpaceL2(GfxState *state, GfxColorSpace *colorSpace, b
         Ref ref = iccBasedCS->getRef();
         const bool validref = ref != Ref::INVALID();
         int intent = state->getCmsRenderingIntent();
-        std::string name;
+        std::unique_ptr<GooString> name;
         if (validref) {
             name = GooString::format("ICCBased-{0:d}-{1:d}-{2:d}", ref.num, ref.gen, intent);
         } else {
             const unsigned long long hash = std::hash<GfxLCMSProfilePtr> {}(iccBasedCS->getProfile());
             name = GooString::format("ICCBased-hashed-{0:ullX}-{1:d}", hash, intent);
         }
-        const auto &it = iccEmitted.find(name);
+        const auto &it = iccEmitted.find(name->toStr());
         if (it != iccEmitted.end()) {
-            writePSFmt("{0:s}", name.c_str());
+            writePSFmt("{0:t}", name.get());
             if (genXform) {
                 writePS(" {}");
             }
         } else {
             char *csa = iccBasedCS->getPostScriptCSA();
             if (csa) {
-                writePSFmt("userdict /{0:s} {1:s} put\n", name.c_str(), csa);
-                iccEmitted.emplace(name);
-                writePSFmt("{0:s}", name.c_str());
+                writePSFmt("userdict /{0:t} {1:s} put\n", name.get(), csa);
+                iccEmitted.emplace(name->toStr());
+                writePSFmt("{0:t}", name.get());
                 if (genXform) {
                     writePS(" {}");
                 }
@@ -7138,11 +7186,11 @@ void PSOutputDev::cvtFunction(const Function *func, bool invertPSFunction)
 
     switch (func->getType()) {
 
-    case Function::Type::Identity:
+    case -1: // identity
         writePS("{}\n");
         break;
 
-    case Function::Type::Sampled:
+    case 0: // sampled
         func0 = (const SampledFunction *)func;
         thisFunc = nextFunc++;
         m = func0->getInputSize();
@@ -7216,7 +7264,7 @@ void PSOutputDev::cvtFunction(const Function *func, bool invertPSFunction)
         writePS("}\n");
         break;
 
-    case Function::Type::Exponential:
+    case 2: // exponential
         func2 = (const ExponentialFunction *)func;
         n = func2->getOutputSize();
         writePSFmt("{{ dup {0:.6g} lt {{ pop {1:.6g} }} {{ dup {2:.6g} gt {{ pop {3:.6g} }} if }} ifelse\n", func2->getDomainMin(0), func2->getDomainMin(0), func2->getDomainMax(0), func2->getDomainMax(0));
@@ -7239,7 +7287,7 @@ void PSOutputDev::cvtFunction(const Function *func, bool invertPSFunction)
         writePS("}\n");
         break;
 
-    case Function::Type::Stitching:
+    case 3: // stitching
         func3 = (const StitchingFunction *)func;
         thisFunc = nextFunc++;
         for (i = 0; i < func3->getNumFuncs(); ++i) {
@@ -7264,7 +7312,7 @@ void PSOutputDev::cvtFunction(const Function *func, bool invertPSFunction)
         writePS("}\n");
         break;
 
-    case Function::Type::PostScript:
+    case 4: // PostScript
         func4 = (const PostScriptFunction *)func;
         if (invertPSFunction) {
             GooString *codeString = new GooString(func4->getCodeString());
@@ -7328,8 +7376,8 @@ void PSOutputDev::writePSFmt(const char *fmt, ...)
     if (t3String) {
         t3String->appendfv((char *)fmt, args);
     } else {
-        const std::string buf = GooString::formatv((char *)fmt, args);
-        (*outputFunc)(outputStream, buf.c_str(), buf.size());
+        const std::unique_ptr<GooString> buf = GooString::formatv((char *)fmt, args);
+        (*outputFunc)(outputStream, buf->c_str(), buf->getLength());
     }
     va_end(args);
 }
@@ -7379,25 +7427,27 @@ void PSOutputDev::writePSName(const char *s)
     }
 }
 
-std::string PSOutputDev::filterPSName(const std::string &name)
+GooString *PSOutputDev::filterPSName(const std::string &name)
 {
-    std::string name2;
+    GooString *name2;
+    char buf[8];
+
+    name2 = new GooString();
 
     // ghostscript chokes on names that begin with out-of-limits
     // numbers, e.g., 1e4foo is handled correctly (as a name), but
     // 1e999foo generates a limitcheck error
     const char c0 = name[0];
     if (c0 >= '0' && c0 <= '9') {
-        name2 += 'f';
+        name2->append('f');
     }
 
     for (const char c : name) {
         if (c <= (char)0x20 || c >= (char)0x7f || c == '(' || c == ')' || c == '<' || c == '>' || c == '[' || c == ']' || c == '{' || c == '}' || c == '/' || c == '%') {
-            char buf[8];
             sprintf(buf, "#%02x", c & 0xff);
-            name2.append(buf);
+            name2->append(buf);
         } else {
-            name2 += c;
+            name2->append(c);
         }
     }
     return name2;
@@ -7454,8 +7504,8 @@ GooString *PSOutputDev::filterPSLabel(GooString *label, bool *needParens)
         } else if (c == '(') {
             label2->append("\\(");
         } else if (c < 0x20 || c > 0x7e) {
-            std::string aux = GooString::format("\\{0:03o}", c);
-            label2->append(aux);
+            std::unique_ptr<GooString> aux = GooString::format("\\{0:03o}", c);
+            label2->append(aux.get());
             j += 4;
         } else {
             label2->append(c);
@@ -7469,10 +7519,9 @@ GooString *PSOutputDev::filterPSLabel(GooString *label, bool *needParens)
 }
 
 // Write a DSC-compliant <textline>.
-void PSOutputDev::writePSTextLine(const std::string &s)
+void PSOutputDev::writePSTextLine(const GooString *s)
 {
-    std::size_t i;
-    int j, step;
+    int i, j, step;
     int c;
 
     // - DSC comments must be printable ASCII; control chars and
@@ -7482,15 +7531,15 @@ void PSOutputDev::writePSTextLine(const std::string &s)
     //   for the keyword, which was emitted by the caller)
     // - lines that start with a left paren are treated as <text>
     //   instead of <textline>, so we escape a leading paren
-    if (s.starts_with(unicodeByteOrderMark)) {
+    if (s->getLength() >= 2 && (s->getChar(0) & 0xff) == 0xfe && (s->getChar(1) & 0xff) == 0xff) {
         i = 3;
         step = 2;
     } else {
         i = 0;
         step = 1;
     }
-    for (j = 0; i < s.size() && j < 200; i += step) {
-        c = s[i] & 0xff;
+    for (j = 0; i < s->getLength() && j < 200; i += step) {
+        c = s->getChar(i) & 0xff;
         if (c == '\\') {
             writePS("\\\\");
             j += 2;

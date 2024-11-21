@@ -1,4 +1,4 @@
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 #include "Object.h"
 #include "Lexer.h"

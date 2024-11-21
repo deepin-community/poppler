@@ -7,7 +7,7 @@
 // Pino Toscano <pino@kde.org> (c) 2008
 // Carlos Garcia Campos <carlosgc@gnome.org> (c) 2010
 // Tobias Koenig <tobias.koenig@kdab.com> (c) 2012
-// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2024
+// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -407,9 +407,9 @@ void MediaRendition::outputToFile(FILE *fp)
     }
 }
 
-std::unique_ptr<MediaRendition> MediaRendition::copy() const
+MediaRendition *MediaRendition::copy() const
 {
-    return std::make_unique<MediaRendition>(*this);
+    return new MediaRendition(*this);
 }
 
 // TODO: SelectorRendition

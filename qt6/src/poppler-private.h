@@ -21,7 +21,6 @@
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
- * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Inspired on code by
  * Copyright (C) 2004 by Albert Astals Cid <tsdgeos@terra.es>
  * Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
@@ -73,7 +72,6 @@ namespace Poppler {
 
 /* borrowed from kpdf */
 POPPLER_QT6_EXPORT QString unicodeToQString(const Unicode *u, int len);
-POPPLER_QT6_EXPORT QString unicodeToQString(const std::vector<Unicode> &u);
 
 POPPLER_QT6_EXPORT QString UnicodeParsedString(const GooString *s1);
 
@@ -142,7 +140,10 @@ public:
     DocumentData(const DocumentData &) = delete;
     DocumentData &operator=(const DocumentData &) = delete;
 
-    void setPaperColor(const QColor &color) { paperColor = color; }
+    void setPaperColor(const QColor &color)
+    {
+        paperColor = color;
+    }
 
     void fillMembers()
     {

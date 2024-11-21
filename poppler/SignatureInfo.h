@@ -13,7 +13,6 @@
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2021 Marek Kasik <mkasik@redhat.com>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -25,7 +24,6 @@
 
 #include "poppler_private_export.h"
 #include "goo/GooString.h"
-#include "HashAlgorithm.h"
 
 enum SignatureValidationStatus
 {
@@ -55,6 +53,7 @@ class POPPLER_PRIVATE_EXPORT SignatureInfo
 {
 public:
     SignatureInfo();
+    SignatureInfo(SignatureValidationStatus, CertificateValidationStatus);
     ~SignatureInfo();
 
     SignatureInfo(const SignatureInfo &) = delete;
@@ -62,36 +61,39 @@ public:
 
     /* GETTERS */
     SignatureValidationStatus getSignatureValStatus() const;
-    std::string getSignerName() const;
-    std::string getSubjectDN() const;
+    CertificateValidationStatus getCertificateValStatus() const;
+    const char *getSignerName() const;
+    const char *getSubjectDN() const;
     const GooString &getLocation() const;
     const GooString &getReason() const;
-    HashAlgorithm getHashAlgorithm() const; // Returns the used HashAlgorithm, and unknown if compiled without signature support
+    int getHashAlgorithm() const; // Returns a NSS3 HASH_HashType or -1 if compiled without NSS3
     time_t getSigningTime() const;
     bool isSubfilterSupported() const { return sig_subfilter_supported; }
     const X509CertificateInfo *getCertificateInfo() const;
 
     /* SETTERS */
     void setSignatureValStatus(enum SignatureValidationStatus);
-    void setSignerName(const std::string &);
-    void setSubjectDN(const std::string &);
+    void setCertificateValStatus(enum CertificateValidationStatus);
+    void setSignerName(const char *);
+    void setSubjectDN(const char *);
     void setLocation(const GooString *);
     void setReason(const GooString *);
-    void setHashAlgorithm(HashAlgorithm);
+    void setHashAlgorithm(int);
     void setSigningTime(time_t);
     void setSubFilterSupport(bool isSupported) { sig_subfilter_supported = isSupported; }
     void setCertificateInfo(std::unique_ptr<X509CertificateInfo>);
 
 private:
-    SignatureValidationStatus sig_status = SIGNATURE_NOT_VERIFIED;
+    SignatureValidationStatus sig_status;
+    CertificateValidationStatus cert_status;
     std::unique_ptr<X509CertificateInfo> cert_info;
-    std::string signer_name;
-    std::string subject_dn;
+    char *signer_name;
+    char *subject_dn;
     GooString location;
     GooString reason;
-    HashAlgorithm hash_type = HashAlgorithm::Unknown;
-    time_t signing_time = 0;
-    bool sig_subfilter_supported = false;
+    int hash_type;
+    time_t signing_time;
+    bool sig_subfilter_supported;
 };
 
 #endif

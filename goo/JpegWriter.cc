@@ -13,7 +13,6 @@
 // Copyright (C) 2018 Martin Packman <gzlist@googlemail.com>
 // Copyright (C) 2018 Ed Porras <ed@motologic.com>
 // Copyright (C) 2021 Peter Williams <peter@newton.cx>
-// Copyright (C) 2023 Jordan Abrahams-Whitehead <ajordanr@google.com>
 //
 //========================================================================
 
@@ -24,7 +23,7 @@
 #ifdef ENABLE_LIBJPEG
 
 #    include "poppler/Error.h"
-#    include <cstdio>
+
 extern "C" {
 #    include <jpeglib.h>
 }

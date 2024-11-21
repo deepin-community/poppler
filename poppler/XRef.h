@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
-// Copyright (C) 2006, 2008, 2010-2013, 2017-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008, 2010-2013, 2017-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007-2008 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2007 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2010 Ilya Gorenbein <igorenbein@finjan.com>
@@ -27,7 +27,6 @@
 // Copyright (C) 2018 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
-// Copyright (C) 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -96,13 +95,6 @@ struct XRefEntry
             flags &= ~mask;
         }
     }
-};
-
-// How to compress the a added stream
-enum class StreamCompression
-{
-    None, /* No compression */
-    Compress, /* Compresses the stream */
 };
 
 class POPPLER_PRIVATE_EXPORT XRef
@@ -220,11 +212,9 @@ public:
     // Adds a stream object using AutoFreeMemStream.
     // The function takes ownership over dict and buffer.
     // The buffer should be created using gmalloc().
-    // For stream compression, if the data is already compressed
-    // don't compress again. If it is not compressed, use compress (Flate / zlib)
     // Returns ref to a new object.
-    Ref addStreamObject(Dict *dict, char *buffer, const Goffset bufferSize, StreamCompression compression);
-    Ref addStreamObject(Dict *dict, uint8_t *buffer, const Goffset bufferSize, StreamCompression compression);
+    Ref addStreamObject(Dict *dict, char *buffer, const Goffset bufferSize);
+    Ref addStreamObject(Dict *dict, uint8_t *buffer, const Goffset bufferSize);
 
     // Output XRef table to stream
     void writeTableToFile(OutStream *outStr, bool writeAllEntries);
@@ -268,8 +258,6 @@ private:
     bool strOwner; // true if str is owned by the instance
     mutable std::recursive_mutex mutex;
     std::function<void()> xrefReconstructedCb;
-
-    RefRecursionChecker refsBeingFetched;
 
     int reserve(int newSize);
     int resize(int newSize);

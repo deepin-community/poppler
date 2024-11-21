@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2007, 2009-2011, 2013, 2017-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007, 2009-2011, 2013, 2017-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2005, 2006, 2008 Brad Hards <bradh@frogmouth.net>
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
@@ -32,7 +32,6 @@
 // Copyright (C) 2020 Katarina Behrens <Katarina.Behrens@cib.de>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -79,7 +78,7 @@ public:
 
     void init(XRef *xref, Object *tree);
     Object lookup(const GooString *name);
-    int numEntries() { return entries.size(); };
+    int numEntries() { return length; };
     // iterator accessor, note it returns a pointer to the internal object, do not free nor delete it
     Object *getValue(int i);
     const GooString *getName(int i) const;
@@ -91,12 +90,18 @@ private:
         ~Entry();
         GooString name;
         Object value;
+        static int cmpEntry(const void *voidEntry, const void *voidOtherEntry);
+        static int cmp(const void *key, const void *entry);
     };
 
-    void parse(const Object *tree, RefRecursionChecker &seen);
+    void parse(const Object *tree, std::set<int> &seen);
+    void addEntry(Entry *entry);
 
     XRef *xref;
-    std::vector<std::unique_ptr<Entry>> entries;
+    Entry **entries;
+    int size, length; // size is the number of entries in
+                      // the array of Entry*
+                      // length is the number of real Entry
 };
 
 //------------------------------------------------------------------------

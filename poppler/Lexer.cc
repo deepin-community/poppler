@@ -18,9 +18,6 @@
 // Copyright (C) 2010 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2012, 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
-// Copyright (C) 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -36,7 +33,6 @@
 #include <cctype>
 #include "Lexer.h"
 #include "Error.h"
-#include "UTF.h"
 #include "XRef.h"
 
 //------------------------------------------------------------------------
@@ -167,6 +163,7 @@ Object Lexer::getObj(int objNum)
     int xi;
     long long xll = 0;
     double xf = 0, scale;
+    GooString *s;
     int n, m;
 
     // skip whitespace and comments
@@ -291,12 +288,12 @@ Object Lexer::getObj(int objNum)
         break;
 
     // string
-    case '(': {
+    case '(':
         p = tokBuf;
         n = 0;
         numParen = 1;
         done = false;
-        std::string s;
+        s = nullptr;
         do {
             c2 = EOF;
             switch (c = getChar()) {
@@ -391,7 +388,11 @@ Object Lexer::getObj(int objNum)
 
             if (c2 != EOF) {
                 if (n == tokBufSize) {
-                    s.append(tokBuf, tokBufSize);
+                    if (!s) {
+                        s = new GooString(tokBuf, tokBufSize);
+                    } else {
+                        s->append(tokBuf, tokBufSize);
+                    }
                     p = tokBuf;
                     n = 0;
 
@@ -401,7 +402,7 @@ Object Lexer::getObj(int objNum)
                         if (newObjNum != objNum) {
                             error(errSyntaxError, getPos(), "Unterminated string");
                             done = true;
-                            s.clear();
+                            delete s;
                             n = -2;
                         }
                     }
@@ -411,22 +412,22 @@ Object Lexer::getObj(int objNum)
             }
         } while (!done);
         if (n >= 0) {
-            s.append(tokBuf, n);
-            // Check utf8
-            if (isUtf8WithBom(s)) {
-                s = utf8ToUtf16WithBom(s);
+            if (!s) {
+                s = new GooString(tokBuf, n);
+            } else {
+                s->append(tokBuf, n);
             }
-            return Object(std::move(s));
+            return Object(s);
         } else {
             return Object(objEOF);
         }
         break;
-    }
+
     // name
-    case '/': {
+    case '/':
         p = tokBuf;
         n = 0;
-        std::string s;
+        s = nullptr;
         while ((c = lookChar()) != EOF && !specialChars[c]) {
             getChar();
             if (c == '#') {
@@ -463,25 +464,20 @@ Object Lexer::getObj(int objNum)
             } else if (n == tokBufSize) {
                 error(errSyntaxError, getPos(), "Warning: name token is longer than what the specification says it can be");
                 *p = c;
-                s = std::string(tokBuf, n);
+                s = new GooString(tokBuf, n);
             } else {
-                // Somewhat arbitrary threshold
-                if (unlikely(n == 1024 * 1024)) {
-                    error(errSyntaxError, getPos(), "Error: name token is larger than 1 MB. Suspicion of hostile file. Stopping parsing");
-                    return Object(objEOF);
-                }
-                s.push_back((char)c);
+                s->append((char)c);
             }
         }
         if (n < tokBufSize) {
             *p = '\0';
             return Object(objName, tokBuf);
         } else {
-            Object obj(objName, s.c_str());
+            Object obj(objName, s->c_str());
+            delete s;
             return obj;
         }
         break;
-    }
 
     // array punctuation
     case '[':
@@ -507,7 +503,7 @@ Object Lexer::getObj(int objNum)
             p = tokBuf;
             m = n = 0;
             c2 = 0;
-            std::string s;
+            s = nullptr;
             while (true) {
                 c = getChar();
                 if (c == '>') {
@@ -528,7 +524,11 @@ Object Lexer::getObj(int objNum)
                     }
                     if (++m == 2) {
                         if (n == tokBufSize) {
-                            s.append(tokBuf, tokBufSize);
+                            if (!s) {
+                                s = new GooString(tokBuf, tokBufSize);
+                            } else {
+                                s->append(tokBuf, tokBufSize);
+                            }
                             p = tokBuf;
                             n = 0;
                         }
@@ -539,14 +539,15 @@ Object Lexer::getObj(int objNum)
                     }
                 }
             }
-            s.append(tokBuf, n);
+            if (!s) {
+                s = new GooString(tokBuf, n);
+            } else {
+                s->append(tokBuf, n);
+            }
             if (m == 1) {
-                s.push_back((char)(c2 << 4));
+                s->append((char)(c2 << 4));
             }
-            if (isUtf8WithBom(s)) {
-                s = utf8ToUtf16WithBom(s);
-            }
-            return Object(std::move(s));
+            return Object(s);
         }
         break;
 

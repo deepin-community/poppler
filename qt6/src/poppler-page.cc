@@ -1,7 +1,7 @@
 /* poppler-page.cc: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
  * Copyright (C) 2005, Brad Hards <bradh@frogmouth.net>
- * Copyright (C) 2005-2022, 2024, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2005-2022, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2005, Stefan Kebekus <stefan.kebekus@math.uni-koeln.de>
  * Copyright (C) 2006-2011, Pino Toscano <pino@kde.org>
  * Copyright (C) 2008 Carlos Garcia Campos <carlosgc@gnome.org>
@@ -26,9 +26,6 @@
  * Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2021 Thomas Huxhorn <thomas.huxhorn@web.de>
- * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
- * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
- * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -131,6 +128,10 @@ public:
     {
         SplashBitmap *b = getBitmap();
 
+        const int bw = b->getWidth();
+        const int bh = b->getHeight();
+        const int brs = b->getRowSize();
+
         // If we use DeviceN8, convert to XBGR8.
         // If requested, also transfer Splash's internal alpha channel.
         const SplashBitmap::ConversionMode mode = ignorePaperColor ? SplashBitmap::conversionAlphaPremultiplied : SplashBitmap::conversionOpaque;
@@ -138,10 +139,6 @@ public:
         const QImage::Format format = ignorePaperColor ? QImage::Format_ARGB32_Premultiplied : QImage::Format_RGB32;
 
         if (b->convertToXBGR(mode)) {
-            const int bw = b->getWidth();
-            const int bh = b->getHeight();
-            const int brs = b->getRowSize();
-
             SplashColorPtr data = takeImageData ? b->takeData() : b->getDataPtr();
 
             if (QSysInfo::ByteOrder == QSysInfo::BigEndian) {
@@ -318,7 +315,7 @@ std::unique_ptr<Link> PageData::convertLinkActionToLink(::LinkAction *a, Documen
             reference = lrn->getScreenAnnot();
         }
 
-        popplerLink = std::make_unique<LinkRendition>(linkArea, lrn->getMedia() ? lrn->getMedia()->copy() : std::unique_ptr<::MediaRendition> {}, lrn->getOperation(), UnicodeParsedString(lrn->getScript()), reference);
+        popplerLink = std::make_unique<LinkRendition>(linkArea, lrn->getMedia() ? lrn->getMedia()->copy() : nullptr, lrn->getOperation(), UnicodeParsedString(lrn->getScript()), reference);
     } break;
 
     case actionOCGState: {
@@ -335,16 +332,9 @@ std::unique_ptr<Link> PageData::convertLinkActionToLink(::LinkAction *a, Documen
         popplerLink = std::make_unique<LinkHide>(lhp);
     } break;
 
-    case actionResetForm: {
-        ::LinkResetForm *lrf = (::LinkResetForm *)a;
-        std::vector<std::string> stdStringFields = lrf->getFields();
-        QStringList qStringFields;
-        for (const std::string &str : stdStringFields) {
-            qStringFields << QString::fromStdString(str);
-        }
-        LinkResetFormPrivate *lrfp = new LinkResetFormPrivate(linkArea, qStringFields, lrf->getExclude());
-        popplerLink = std::make_unique<LinkResetForm>(lrfp);
-    } break;
+    case actionResetForm:
+        // Not handled in Qt6 front-end yet
+        break;
 
     case actionUnknown:
         break;
@@ -662,11 +652,7 @@ QString Page::text(const QRectF &r, TextLayout textLayout) const
     m_page->parentDoc->doc->displayPageSlice(output_dev, m_page->index + 1, 72, 72, 0, false, true, false, -1, -1, -1, -1, nullptr, nullptr, nullptr, nullptr, true);
     if (r.isNull()) {
         const PDFRectangle *rect = m_page->page->getCropBox();
-        if (orientation() == Orientation::Portrait || orientation() == Orientation::UpsideDown) {
-            s = output_dev->getText(rect->x1, rect->y1, rect->x2, rect->y2);
-        } else {
-            s = output_dev->getText(rect->y1, rect->x1, rect->y2, rect->x2);
-        }
+        s = output_dev->getText(rect->x1, rect->y1, rect->x2, rect->y2);
     } else {
         s = output_dev->getText(r.left(), r.top(), r.right(), r.bottom());
     }

@@ -4,12 +4,12 @@
    // Copyright (C) 2010, 2012 Hib Eris <hib@hiberis.nl>
    // Copyright (C) 2012, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
    // Copyright (C) 2012 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
-   // Copyright (C) 2012, 2017, 2024 Adrian Johnson <ajohnson@redneon.com>
+   // Copyright (C) 2012, 2017 Adrian Johnson <ajohnson@redneon.com>
    // Copyright (C) 2012 Mark Brand <mabrand@mabrand.nl>
    // Copyright (C) 2013, 2018, 2019 Adam Reichold <adamreichold@myopera.com>
    // Copyright (C) 2013 Dmytro Morgun <lztoad@gmail.com>
    // Copyright (C) 2017 Christoph Cullmann <cullmann@kde.org>
-   // Copyright (C) 2017, 2018, 2020-2023 Albert Astals Cid <aacid@kde.org>
+   // Copyright (C) 2017, 2018, 2020-2022 Albert Astals Cid <aacid@kde.org>
    // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
    // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
    // Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
@@ -61,97 +61,99 @@ description for all fonts available in Windows. That's how MuPDF works.
 static const struct
 {
     const char *name;
-    const std::vector<std::string> fileNames;
+    const char *t1FileName;
+    const char *ttFileName;
     bool warnIfMissing;
-} displayFontTab[] = { { "Courier", { "n022003l.pfb", "cour.ttf" }, true },
-                       { "Courier-Bold", { "n022004l.pfb", "courbd.ttf" }, true },
-                       { "Courier-BoldOblique", { "n022024l.pfb", "courbi.ttf" }, true },
-                       { "Courier-Oblique", { "n022023l.pfb", "couri.ttf" }, true },
-                       { "Helvetica", { "n019003l.pfb", "arial.ttf" }, true },
-                       { "Helvetica-Bold", { "n019004l.pfb", "arialbd.ttf" }, true },
-                       { "Helvetica-BoldOblique", { "n019024l.pfb", "arialbi.ttf" }, true },
-                       { "Helvetica-Oblique", { "n019023l.pfb", "ariali.ttf" }, true },
-                       { "Symbol", { "s050000l.pfb", "StandardSymbolsPS.otf", "StandardSymbolsPS.ttf" }, true },
-                       { "Times-Bold", { "n021004l.pfb", "timesbd.ttf" }, true },
-                       { "Times-BoldItalic", { "n021024l.pfb", "timesbi.ttf" }, true },
-                       { "Times-Italic", { "n021023l.pfb", "timesi.ttf" }, true },
-                       { "Times-Roman", { "n021003l.pfb", "times.ttf" }, true },
+} displayFontTab[] = { { "Courier", "n022003l.pfb", "cour.ttf", true },
+                       { "Courier-Bold", "n022004l.pfb", "courbd.ttf", true },
+                       { "Courier-BoldOblique", "n022024l.pfb", "courbi.ttf", true },
+                       { "Courier-Oblique", "n022023l.pfb", "couri.ttf", true },
+                       { "Helvetica", "n019003l.pfb", "arial.ttf", true },
+                       { "Helvetica-Bold", "n019004l.pfb", "arialbd.ttf", true },
+                       { "Helvetica-BoldOblique", "n019024l.pfb", "arialbi.ttf", true },
+                       { "Helvetica-Oblique", "n019023l.pfb", "ariali.ttf", true },
+                       // TODO: not sure if "symbol.ttf" is right
+                       { "Symbol", "s050000l.pfb", "symbol.ttf", true },
+                       { "Times-Bold", "n021004l.pfb", "timesbd.ttf", true },
+                       { "Times-BoldItalic", "n021024l.pfb", "timesbi.ttf", true },
+                       { "Times-Italic", "n021023l.pfb", "timesi.ttf", true },
+                       { "Times-Roman", "n021003l.pfb", "times.ttf", true },
                        // TODO: not sure if "wingding.ttf" is right
-                       { "ZapfDingbats", { "d050000l.pfb", "wingding.ttf" }, true },
+                       { "ZapfDingbats", "d050000l.pfb", "wingding.ttf", true },
 
                        // those seem to be frequently accessed by PDF files and I kind of guess
                        // which font file do the refer to
-                       { "Palatino", { "pala.ttf" }, true },
-                       { "Palatino-Roman", { "pala.ttf" }, true },
-                       { "Palatino-Bold", { "palab.ttf" }, true },
-                       { "Palatino-Italic", { "palai.ttf" }, true },
-                       { "Palatino,Italic", { "palai.ttf" }, true },
-                       { "Palatino-BoldItalic", { "palabi.ttf" }, true },
+                       { "Palatino", nullptr, "pala.ttf", true },
+                       { "Palatino-Roman", nullptr, "pala.ttf", true },
+                       { "Palatino-Bold", nullptr, "palab.ttf", true },
+                       { "Palatino-Italic", nullptr, "palai.ttf", true },
+                       { "Palatino,Italic", nullptr, "palai.ttf", true },
+                       { "Palatino-BoldItalic", nullptr, "palabi.ttf", true },
 
-                       { "ArialBlack", { "arialbd.ttf" }, true },
+                       { "ArialBlack", nullptr, "arialbd.ttf", true },
 
-                       { "ArialNarrow", { "arialn.ttf" }, true },
-                       { "ArialNarrow,Bold", { "arialnb.ttf" }, true },
-                       { "ArialNarrow,Italic", { "arialni.ttf" }, true },
-                       { "ArialNarrow,BoldItalic", { "arialnbi.ttf" }, true },
-                       { "ArialNarrow-Bold", { "arialnb.ttf" }, true },
-                       { "ArialNarrow-Italic", { "arialni.ttf" }, true },
-                       { "ArialNarrow-BoldItalic", { "arialnbi.ttf" }, true },
+                       { "ArialNarrow", nullptr, "arialn.ttf", true },
+                       { "ArialNarrow,Bold", nullptr, "arialnb.ttf", true },
+                       { "ArialNarrow,Italic", nullptr, "arialni.ttf", true },
+                       { "ArialNarrow,BoldItalic", nullptr, "arialnbi.ttf", true },
+                       { "ArialNarrow-Bold", nullptr, "arialnb.ttf", true },
+                       { "ArialNarrow-Italic", nullptr, "arialni.ttf", true },
+                       { "ArialNarrow-BoldItalic", nullptr, "arialnbi.ttf", true },
 
-                       { "HelveticaNarrow", { "arialn.ttf" }, true },
-                       { "HelveticaNarrow,Bold", { "arialnb.ttf" }, true },
-                       { "HelveticaNarrow,Italic", { "arialni.ttf" }, true },
-                       { "HelveticaNarrow,BoldItalic", { "arialnbi.ttf" }, true },
-                       { "HelveticaNarrow-Bold", { "arialnb.ttf" }, true },
-                       { "HelveticaNarrow-Italic", { "arialni.ttf" }, true },
-                       { "HelveticaNarrow-BoldItalic", { "arialnbi.ttf" }, true },
+                       { "HelveticaNarrow", nullptr, "arialn.ttf", true },
+                       { "HelveticaNarrow,Bold", nullptr, "arialnb.ttf", true },
+                       { "HelveticaNarrow,Italic", nullptr, "arialni.ttf", true },
+                       { "HelveticaNarrow,BoldItalic", nullptr, "arialnbi.ttf", true },
+                       { "HelveticaNarrow-Bold", nullptr, "arialnb.ttf", true },
+                       { "HelveticaNarrow-Italic", nullptr, "arialni.ttf", true },
+                       { "HelveticaNarrow-BoldItalic", nullptr, "arialnbi.ttf", true },
 
-                       { "BookAntiqua", { "bkant.ttf" }, true },
-                       { "BookAntiqua,Bold", { "bkant.ttf" }, true },
-                       { "BookAntiqua,Italic", { "bkant.ttf" }, true },
-                       { "BookAntiqua,BoldItalic", { "bkant.ttf" }, true },
-                       { "BookAntiqua-Bold", { "bkant.ttf" }, true },
-                       { "BookAntiqua-Italic", { "bkant.ttf" }, true },
-                       { "BookAntiqua-BoldItalic", { "bkant.ttf" }, true },
+                       { "BookAntiqua", nullptr, "bkant.ttf", true },
+                       { "BookAntiqua,Bold", nullptr, "bkant.ttf", true },
+                       { "BookAntiqua,Italic", nullptr, "bkant.ttf", true },
+                       { "BookAntiqua,BoldItalic", nullptr, "bkant.ttf", true },
+                       { "BookAntiqua-Bold", nullptr, "bkant.ttf", true },
+                       { "BookAntiqua-Italic", nullptr, "bkant.ttf", true },
+                       { "BookAntiqua-BoldItalic", nullptr, "bkant.ttf", true },
 
-                       { "Verdana", { "verdana.ttf" }, true },
-                       { "Verdana,Bold", { "verdanab.ttf" }, true },
-                       { "Verdana,Italic", { "verdanai.ttf" }, true },
-                       { "Verdana,BoldItalic", { "verdanaz.ttf" }, true },
-                       { "Verdana-Bold", { "verdanab.ttf" }, true },
-                       { "Verdana-Italic", { "verdanai.ttf" }, true },
-                       { "Verdana-BoldItalic", { "verdanaz.ttf" }, true },
+                       { "Verdana", nullptr, "verdana.ttf", true },
+                       { "Verdana,Bold", nullptr, "verdanab.ttf", true },
+                       { "Verdana,Italic", nullptr, "verdanai.ttf", true },
+                       { "Verdana,BoldItalic", nullptr, "verdanaz.ttf", true },
+                       { "Verdana-Bold", nullptr, "verdanab.ttf", true },
+                       { "Verdana-Italic", nullptr, "verdanai.ttf", true },
+                       { "Verdana-BoldItalic", nullptr, "verdanaz.ttf", true },
 
-                       { "Tahoma", { "tahoma.ttf" }, true },
-                       { "Tahoma,Bold", { "tahomabd.ttf" }, true },
-                       { "Tahoma,Italic", { "tahoma.ttf" }, true },
-                       { "Tahoma,BoldItalic", { "tahomabd.ttf" }, true },
-                       { "Tahoma-Bold", { "tahomabd.ttf" }, true },
-                       { "Tahoma-Italic", { "tahoma.ttf" }, true },
-                       { "Tahoma-BoldItalic", { "tahomabd.ttf" }, true },
+                       { "Tahoma", nullptr, "tahoma.ttf", true },
+                       { "Tahoma,Bold", nullptr, "tahomabd.ttf", true },
+                       { "Tahoma,Italic", nullptr, "tahoma.ttf", true },
+                       { "Tahoma,BoldItalic", nullptr, "tahomabd.ttf", true },
+                       { "Tahoma-Bold", nullptr, "tahomabd.ttf", true },
+                       { "Tahoma-Italic", nullptr, "tahoma.ttf", true },
+                       { "Tahoma-BoldItalic", nullptr, "tahomabd.ttf", true },
 
-                       { "CCRIKH+Verdana", { "verdana.ttf" }, true },
-                       { "CCRIKH+Verdana,Bold", { "verdanab.ttf" }, true },
-                       { "CCRIKH+Verdana,Italic", { "verdanai.ttf" }, true },
-                       { "CCRIKH+Verdana,BoldItalic", { "verdanaz.ttf" }, true },
-                       { "CCRIKH+Verdana-Bold", { "verdanab.ttf" }, true },
-                       { "CCRIKH+Verdana-Italic", { "verdanai.ttf" }, true },
-                       { "CCRIKH+Verdana-BoldItalic", { "verdanaz.ttf" }, true },
+                       { "CCRIKH+Verdana", nullptr, "verdana.ttf", true },
+                       { "CCRIKH+Verdana,Bold", nullptr, "verdanab.ttf", true },
+                       { "CCRIKH+Verdana,Italic", nullptr, "verdanai.ttf", true },
+                       { "CCRIKH+Verdana,BoldItalic", nullptr, "verdanaz.ttf", true },
+                       { "CCRIKH+Verdana-Bold", nullptr, "verdanab.ttf", true },
+                       { "CCRIKH+Verdana-Italic", nullptr, "verdanai.ttf", true },
+                       { "CCRIKH+Verdana-BoldItalic", nullptr, "verdanaz.ttf", true },
 
-                       { "Georgia", { "georgia.ttf" }, true },
-                       { "Georgia,Bold", { "georgiab.ttf" }, true },
-                       { "Georgia,Italic", { "georgiai.ttf" }, true },
-                       { "Georgia,BoldItalic", { "georgiaz.ttf" }, true },
-                       { "Georgia-Bold", { "georgiab.ttf" }, true },
-                       { "Georgia-Italic", { "georgiai.ttf" }, true },
-                       { "Georgia-BoldItalic", { "georgiaz.ttf" }, true },
+                       { "Georgia", nullptr, "georgia.ttf", true },
+                       { "Georgia,Bold", nullptr, "georgiab.ttf", true },
+                       { "Georgia,Italic", nullptr, "georgiai.ttf", true },
+                       { "Georgia,BoldItalic", nullptr, "georgiaz.ttf", true },
+                       { "Georgia-Bold", nullptr, "georgiab.ttf", true },
+                       { "Georgia-Italic", nullptr, "georgiai.ttf", true },
+                       { "Georgia-BoldItalic", nullptr, "georgiaz.ttf", true },
 
                        // fallback for Adobe CID fonts:
-                       { "MingLiU", { "mingliu.ttf" }, false },
-                       { "SimSun", { "simsun.ttf" }, false },
-                       { "MS-Mincho", { "msmincho.ttf" }, false },
-                       { "Batang", { "batang.ttf" }, false },
-                       { "ArialUnicode", { "arialuni.ttf" }, true },
+                       { "MingLiU", nullptr, "mingliu.ttf", false },
+                       { "SimSun", nullptr, "simsun.ttf", false },
+                       { "MS-Mincho", nullptr, "msmincho.ttf", false },
+                       { "Batang", nullptr, "batang.ttf", false },
+                       { "ArialUnicode", nullptr, "arialuni.ttf", true },
                        {} };
 
 static std::string GetWindowsFontDir()
@@ -272,7 +274,7 @@ SysFontInfo *SysFontList::makeWindowsFont(const char *name, int fontNum, const c
     }
 
     // remove trailing ' Oblique'
-    if (n > 8 && !strncmp(name + n - 8, " Oblique", 8)) {
+    if (n > 7 && !strncmp(name + n - 8, " Oblique", 8)) {
         n -= 8;
         oblique = true;
     }
@@ -284,7 +286,7 @@ SysFontInfo *SysFontList::makeWindowsFont(const char *name, int fontNum, const c
     }
 
     // remove trailing ' Regular'
-    if (n > 8 && !strncmp(name + n - 8, " Regular", 8)) {
+    if (n > 5 && !strncmp(name + n - 8, " Regular", 8)) {
         n -= 8;
     }
 
@@ -334,55 +336,53 @@ static GooString *replaceSuffix(GooString *path, const char *suffixA, const char
 
 void GlobalParams::setupBaseFonts(const char *dir)
 {
+    const char *dataRoot = popplerDataDir ? popplerDataDir : POPPLER_DATADIR;
+    GooString *fileName = nullptr;
+
     if (baseFontsInitialized)
         return;
     baseFontsInitialized = true;
 
     const std::string winFontDir = GetWindowsFontDir();
 
-    std::vector<std::string> fontDirs;
-    if (dir) {
-        fontDirs.emplace_back(dir);
-    }
-    if (!winFontDir.empty()) {
-        fontDirs.emplace_back(winFontDir);
-    }
-
     for (int i = 0; displayFontTab[i].name; ++i) {
         if (fontFiles.count(displayFontTab[i].name) > 0)
             continue;
 
-        const GooString fontName = GooString(displayFontTab[i].name);
+        GooString *fontName = new GooString(displayFontTab[i].name);
 
-        bool fontFound = false;
-        for (const std::string &fontDir : fontDirs) {
-            for (const std::string &fileName : displayFontTab[i].fileNames) {
-                const std::unique_ptr<GooString> fontPath(appendToPath(new GooString(fontDir), fileName.c_str()));
-                if (FileExists(fontPath->c_str()) || FileExists(replaceSuffix(fontPath.get(), ".pfb", ".pfa")->c_str()) || FileExists(replaceSuffix(fontPath.get(), ".ttc", ".ttf")->c_str())) {
-                    addFontFile(fontName.toStr(), fontPath->toStr());
-                    fontFound = true;
-                    break;
-                }
+        if (dir && displayFontTab[i].t1FileName) {
+            GooString *fontPath = appendToPath(new GooString(dir), displayFontTab[i].t1FileName);
+            if (FileExists(fontPath->c_str()) || FileExists(replaceSuffix(fontPath, ".pfb", ".pfa")->c_str())) {
+                addFontFile(fontName, fontPath);
+                continue;
             }
-
-            if (fontFound) {
-                break;
-            }
+            delete fontPath;
         }
 
-        if (!fontFound && displayFontTab[i].warnIfMissing) {
+        if (!winFontDir.empty() && displayFontTab[i].ttFileName) {
+            GooString *fontPath = appendToPath(new GooString(winFontDir), displayFontTab[i].ttFileName);
+            if (FileExists(fontPath->c_str()) || FileExists(replaceSuffix(fontPath, ".ttc", ".ttf")->c_str())) {
+                addFontFile(fontName, fontPath);
+                continue;
+            }
+            delete fontPath;
+        }
+
+        if (displayFontTab[i].warnIfMissing) {
             error(errSyntaxError, -1, "No display font for '{0:s}'", displayFontTab[i].name);
+            delete fontName;
         }
     }
     if (!winFontDir.empty()) {
         sysFonts->scanWindowsFonts(winFontDir);
     }
 
-    const char *dataRoot = popplerDataDir ? popplerDataDir : POPPLER_DATADIR;
-    const std::string fileName = std::string(dataRoot).append("/cidfmap");
+    fileName = new GooString(dataRoot);
+    fileName->append("/cidfmap");
 
     // try to open file
-    const std::unique_ptr<GooFile> file = GooFile::open(fileName);
+    const std::unique_ptr<GooFile> file = GooFile::open(fileName->toStr());
 
     if (file) {
         Parser *parser;
@@ -395,7 +395,7 @@ void GlobalParams::setupBaseFonts(const char *dir)
                 if (obj2.isDict()) {
                     Object obj3 = obj2.getDict()->lookup("Path");
                     if (obj3.isString())
-                        addFontFile(GooString(obj1.getName()).toStr(), obj3.getString()->toStr());
+                        addFontFile(new GooString(obj1.getName()), obj3.getString()->copy());
                     // Aliases
                 } else if (obj2.isName()) {
                     substFiles.emplace(obj1.getName(), obj2.getName());
@@ -408,6 +408,8 @@ void GlobalParams::setupBaseFonts(const char *dir)
             }
         }
         delete parser;
+    } else {
+        delete fileName;
     }
 }
 

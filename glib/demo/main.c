@@ -38,7 +38,6 @@
 #include "find.h"
 #include "print.h"
 #include "selections.h"
-#include "signature.h"
 
 enum
 {
@@ -70,8 +69,7 @@ static const PopplerGlibDemo demo_list[] = { { "Info", pgd_info_create_widget },
                                              { "Text", pgd_text_create_widget },
                                              { "Tagged Structure", pgd_taggedstruct_create_widget },
                                              { "Find", pgd_find_create_widget },
-                                             { "Print", pgd_print_create_widget },
-                                             { "Signature", pgd_signature_create_widget } };
+                                             { "Print", pgd_print_create_widget } };
 
 static void pgd_demo_changed(GtkTreeSelection *selection, GtkNotebook *notebook)
 {

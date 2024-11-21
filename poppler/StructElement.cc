@@ -6,9 +6,9 @@
 //
 // Copyright 2013, 2014 Igalia S.L.
 // Copyright 2014 Luigi Scarso <luigi.scarso@gmail.com>
-// Copyright 2014, 2017-2019, 2021, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2014, 2017-2019, 2021 Albert Astals Cid <aacid@kde.org>
 // Copyright 2015 Dmytro Morgun <lztoad@gmail.com>
-// Copyright 2018, 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2018, 2021 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
 //
@@ -712,7 +712,7 @@ StructElement::StructData::~StructData()
     }
 }
 
-StructElement::StructElement(Dict *element, StructTreeRoot *treeRootA, StructElement *parentA, RefRecursionChecker &seen) : type(Unknown), treeRoot(treeRootA), parent(parentA), s(new StructData())
+StructElement::StructElement(Dict *element, StructTreeRoot *treeRootA, StructElement *parentA, std::set<int> &seen) : type(Unknown), treeRoot(treeRootA), parent(parentA), s(new StructData())
 {
     assert(treeRoot);
     assert(element);
@@ -776,15 +776,6 @@ bool StructElement::getPageRef(Ref &ref) const
         return parent->getPageRef(ref);
     }
 
-    return false;
-}
-
-bool StructElement::getStmRef(Ref &ref) const
-{
-    if (stmRef.isRef()) {
-        ref = stmRef.getRef();
-        return true;
-    }
     return false;
 }
 
@@ -1064,7 +1055,7 @@ void StructElement::parse(Dict *element)
     }
 }
 
-StructElement *StructElement::parseChild(const Object *ref, Object *childObj, RefRecursionChecker &seen)
+StructElement *StructElement::parseChild(const Object *ref, Object *childObj, std::set<int> &seen)
 {
     assert(childObj);
     assert(ref);
@@ -1116,7 +1107,8 @@ StructElement *StructElement::parseChild(const Object *ref, Object *childObj, Re
     } else if (childObj->isDict()) {
         if (!ref->isRef()) {
             error(errSyntaxError, -1, "Structure element dictionary is not an indirect reference ({0:s})", ref->getTypeName());
-        } else if (seen.insert(ref->getRef())) {
+        } else if (seen.find(ref->getRefNum()) == seen.end()) {
+            seen.insert(ref->getRefNum());
             child = new StructElement(childObj->getDict(), treeRoot, this, seen);
         } else {
             error(errSyntaxWarning, -1, "Loop detected in structure tree, skipping subtree at object {0:d}:{1:d}", ref->getRefNum(), ref->getRefGen());
@@ -1140,7 +1132,7 @@ StructElement *StructElement::parseChild(const Object *ref, Object *childObj, Re
     return child;
 }
 
-void StructElement::parseChildren(Dict *element, RefRecursionChecker &seen)
+void StructElement::parseChildren(Dict *element, std::set<int> &seen)
 {
     Object kids = element->lookup("K");
     if (kids.isArray()) {

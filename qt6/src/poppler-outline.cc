@@ -3,7 +3,6 @@
  * Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2019 Albert Astals Cid <aacid@kde.org>
- * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -79,7 +78,7 @@ QString OutlineItem::name() const
 
     if (name.isEmpty()) {
         if (const ::OutlineItem *data = m_data->data) {
-            name = unicodeToQString(data->getTitle());
+            name = unicodeToQString(data->getTitle(), data->getTitleLength());
         }
     }
 

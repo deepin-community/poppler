@@ -5,8 +5,6 @@
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright (C) 2021, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2021 Marco Genasci <fedeliallalinea@gmail.com>
-// Copyright (C) 2023 Jordan Abrahams-Whitehead <ajordanr@google.com>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // This file is licensed under the GPLv2 or later
 //
@@ -16,7 +14,6 @@
 
 #include <memory>
 #ifdef ENABLE_LIBJPEG
-#    include <cstdio>
 extern "C" {
 #    include <jpeglib.h>
 }
@@ -288,10 +285,10 @@ Ref PngEmbedder::embedImage(XRef *xref)
     Dict *baseImageDict = createImageDict(xref, colorSpace, m_width, m_height, m_bitDepth);
     if (m_hasAlpha) {
         Dict *maskImageDict = createImageDict(xref, DEVICE_GRAY, m_width, m_height, m_bitDepth);
-        Ref maskImageRef = xref->addStreamObject(maskImageDict, maskBuffer, maskBufferSize, StreamCompression::Compress);
+        Ref maskImageRef = xref->addStreamObject(maskImageDict, maskBuffer, maskBufferSize);
         baseImageDict->add("SMask", Object(maskImageRef));
     }
-    return xref->addStreamObject(baseImageDict, mainBuffer, mainBufferSize, StreamCompression::Compress);
+    return xref->addStreamObject(baseImageDict, mainBuffer, mainBufferSize);
 }
 #endif
 
@@ -361,7 +358,7 @@ Ref JpegEmbedder::embedImage(XRef *xref)
     }
     Dict *baseImageDict = createImageDict(xref, DEVICE_RGB, m_width, m_height, 8);
     baseImageDict->add("Filter", Object(objName, "DCTDecode"));
-    Ref baseImageRef = xref->addStreamObject(baseImageDict, m_fileContent.release(), m_fileSize, StreamCompression::None);
+    Ref baseImageRef = xref->addStreamObject(baseImageDict, m_fileContent.release(), m_fileSize);
     return baseImageRef;
 }
 #endif

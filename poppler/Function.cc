@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2008-2010, 2013-2015, 2017-2020, 2022-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008-2010, 2013-2015, 2017-2020, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2011 Andrea Canciani <ranma42@gmail.com>
@@ -524,7 +524,7 @@ void SampledFunction::transform(const double *in, double *out) const
 
 bool SampledFunction::hasDifferentResultSet(const Function *func) const
 {
-    if (func->getType() == Type::Sampled) {
+    if (func->getType() == 0) {
         SampledFunction *compTo = (SampledFunction *)func;
         if (compTo->getSampleNumber() != nSamples) {
             return true;
@@ -1131,7 +1131,7 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
     //----- parse the function
     codeString = new GooString();
     str->reset();
-    if (getToken(str)->cmp("{") != 0) {
+    if (getToken(str).cmp("{") != 0) {
         error(errSyntaxError, -1, "Expected '{{' at start of PostScript function");
         goto err1;
     }
@@ -1231,10 +1231,8 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
     int a, b, mid, cmp;
 
     while (true) {
-        // This needs to be on the heap to help make parseCode
-        // able to call itself more times recursively
-        std::unique_ptr<GooString> tok = getToken(str);
-        const char *p = tok->c_str();
+        GooString tok = getToken(str);
+        const char *p = tok.c_str();
         if (isdigit(*p) || *p == '.' || *p == '-') {
             isReal = false;
             for (; *p; ++p) {
@@ -1246,13 +1244,13 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
             resizeCode(*codePtr);
             if (isReal) {
                 code[*codePtr].type = psReal;
-                code[*codePtr].real = gatof(tok->c_str());
+                code[*codePtr].real = gatof(tok.c_str());
             } else {
                 code[*codePtr].type = psInt;
-                code[*codePtr].intg = atoi(tok->c_str());
+                code[*codePtr].intg = atoi(tok.c_str());
             }
             ++*codePtr;
-        } else if (!tok->cmp("{")) {
+        } else if (!tok.cmp("{")) {
             opPtr = *codePtr;
             *codePtr += 3;
             resizeCode(opPtr + 2);
@@ -1260,7 +1258,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 return false;
             }
             tok = getToken(str);
-            if (!tok->cmp("{")) {
+            if (!tok.cmp("{")) {
                 elsePtr = *codePtr;
                 if (!parseCode(str, codePtr)) {
                     return false;
@@ -1269,7 +1267,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
             } else {
                 elsePtr = -1;
             }
-            if (!tok->cmp("if")) {
+            if (!tok.cmp("if")) {
                 if (elsePtr >= 0) {
                     error(errSyntaxError, -1, "Got 'if' operator with two blocks in PostScript function");
                     return false;
@@ -1278,7 +1276,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 code[opPtr].op = psOpIf;
                 code[opPtr + 2].type = psBlock;
                 code[opPtr + 2].blk = *codePtr;
-            } else if (!tok->cmp("ifelse")) {
+            } else if (!tok.cmp("ifelse")) {
                 if (elsePtr < 0) {
                     error(errSyntaxError, -1, "Got 'ifelse' operator with one block in PostScript function");
                     return false;
@@ -1293,7 +1291,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 error(errSyntaxError, -1, "Expected if/ifelse operator in PostScript function");
                 return false;
             }
-        } else if (!tok->cmp("}")) {
+        } else if (!tok.cmp("}")) {
             resizeCode(*codePtr);
             code[*codePtr].type = psOperator;
             code[*codePtr].op = psOpReturn;
@@ -1306,7 +1304,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
             // invariant: psOpNames[a] < tok < psOpNames[b]
             while (b - a > 1) {
                 mid = (a + b) / 2;
-                cmp = tok->cmp(psOpNames[mid]);
+                cmp = tok.cmp(psOpNames[mid]);
                 if (cmp > 0) {
                     a = mid;
                 } else if (cmp < 0) {
@@ -1316,7 +1314,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 }
             }
             if (cmp != 0) {
-                error(errSyntaxError, -1, "Unknown operator '{0:t}' in PostScript function", tok.get());
+                error(errSyntaxError, -1, "Unknown operator '{0:t}' in PostScript function", &tok);
                 return false;
             }
             resizeCode(*codePtr);
@@ -1328,12 +1326,12 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
     return true;
 }
 
-std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
+GooString PostScriptFunction::getToken(Stream *str)
 {
     int c;
     bool comment;
 
-    std::string s;
+    GooString s;
     comment = false;
     while (true) {
         if ((c = str->getChar()) == EOF) {
@@ -1351,10 +1349,10 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
         }
     }
     if (c == '{' || c == '}') {
-        s.push_back((char)c);
+        s.append((char)c);
     } else if (isdigit(c) || c == '.' || c == '-') {
         while (true) {
-            s.push_back((char)c);
+            s.append((char)c);
             c = str->lookChar();
             if (c == EOF || !(isdigit(c) || c == '.' || c == '-')) {
                 break;
@@ -1364,7 +1362,7 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
         }
     } else {
         while (true) {
-            s.push_back((char)c);
+            s.append((char)c);
             c = str->lookChar();
             if (c == EOF || !isalnum(c)) {
                 break;
@@ -1373,7 +1371,7 @@ std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
             codeString->append(c);
         }
     }
-    return std::make_unique<GooString>(s);
+    return s;
 }
 
 void PostScriptFunction::resizeCode(int newSize)

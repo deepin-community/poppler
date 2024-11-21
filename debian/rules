@@ -6,12 +6,10 @@ UPSTREAM_VERSION := $(shell dpkg-parsechangelog | sed -n 's/^Version: //p' | cut
 SYMBOLS_in := $(wildcard debian/*.symbols.in)
 SYMBOLS_generated := $(patsubst %.in,%,$(SYMBOLS_in))
 
-libpopplerN := $(shell sed -rn 's/^Package:[[:space:]]*(libpoppler[0-9]+(t64)?)[[:space:]]*$$/\1/p' debian/control)
-
-built_binaries := $(shell dh_listpackages)
+libpopplerN := $(shell sed -rn 's/^Package:[[:space:]]*(libpoppler[0-9]+)[[:space:]]*$$/\1/p' debian/control)
 
 # enable all the hardening options
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=+lto
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 # disable gtk stuff to minimize Build-Depends
 CONFIGURE_ARGS :=				\
@@ -20,16 +18,13 @@ CONFIGURE_ARGS :=				\
 	-DCMAKE_CXX_FLAGS_RELEASE="$(CXXFLAGS)"	\
 	-DENABLE_GLIB=ON			\
 	-DENABLE_QT5=ON				\
+	-DENABLE_QT6=ON				\
 	-DENABLE_CPP=ON				\
 	-DENABLE_GTK_DOC=ON			\
 	-DENABLE_UNSTABLE_API_ABI_HEADERS=ON	\
 	-DENABLE_CMS=lcms2			\
 	-DENABLE_LIBOPENJPEG=openjpeg2		\
 	-DBUILD_GTK_TESTS=OFF
-
-ifeq ($(filter %-qt6-dev,$(built_binaries)),)
-CONFIGURE_ARGS += -DENABLE_QT6=OFF
-endif
 
 %:
 	dh $@

@@ -74,6 +74,11 @@
 #cmakedefine ENABLE_LIBPNG 1
 #endif
 
+/* Use zlib instead of builtin zlib decoder. */
+#ifndef ENABLE_ZLIB
+#cmakedefine ENABLE_ZLIB 1
+#endif
+
 /* Define to 1 if you have the <dirent.h> header file, and it defines `DIR'.
    */
 #ifndef HAVE_DIRENT_H
@@ -117,7 +122,7 @@
 //------------------------------------------------------------------------
 
 // copyright notice
-#define popplerCopyright "Copyright 2005-2024 The Poppler Developers - http://poppler.freedesktop.org"
+#define popplerCopyright "Copyright 2005-2022 The Poppler Developers - http://poppler.freedesktop.org"
 #define xpdfCopyright "Copyright 1996-2011, 2022 Glyph & Cog, LLC"
 
 //------------------------------------------------------------------------

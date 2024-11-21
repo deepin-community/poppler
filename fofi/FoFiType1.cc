@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2008, 2010, 2018, 2021-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2008, 2010, 2018, 2021, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2010 Jakub Wilk <jwilk@jwilk.net>
 // Copyright (C) 2014 Carlos Garcia Campos <carlosgc@gnome.org>
@@ -27,9 +27,6 @@
 //========================================================================
 
 #include <config.h>
-
-#include <charconv>
-#include <optional>
 
 #include <cstdlib>
 #include <cstring>
@@ -50,24 +47,47 @@ FoFiType1 *FoFiType1::make(const unsigned char *fileA, int lenA)
     return new FoFiType1(fileA, lenA, false);
 }
 
+FoFiType1 *FoFiType1::load(const char *fileName)
+{
+    char *fileA;
+    int lenA;
+
+    if (!(fileA = FoFiBase::readFile(fileName, &lenA))) {
+        return nullptr;
+    }
+    return new FoFiType1((unsigned char *)fileA, lenA, true);
+}
+
 FoFiType1::FoFiType1(const unsigned char *fileA, int lenA, bool freeFileDataA) : FoFiBase(fileA, lenA, freeFileDataA)
 {
+    name = nullptr;
     encoding = nullptr;
+    fontMatrix[0] = 0.001;
+    fontMatrix[1] = 0;
+    fontMatrix[2] = 0;
+    fontMatrix[3] = 0.001;
+    fontMatrix[4] = 0;
+    fontMatrix[5] = 0;
     parsed = false;
     undoPFB();
 }
 
 FoFiType1::~FoFiType1()
 {
+    int i;
+
+    if (name) {
+        gfree(name);
+    }
     if (encoding && encoding != fofiType1StandardEncoding) {
-        for (int i = 0; i < 256; ++i) {
+        for (i = 0; i < 256; ++i) {
             gfree(encoding[i]);
         }
         gfree(encoding);
     }
 }
 
-std::string FoFiType1::getName()
+const char *FoFiType1::getName()
 {
     if (!parsed) {
         parse();
@@ -81,6 +101,18 @@ char **FoFiType1::getEncoding()
         parse();
     }
     return encoding;
+}
+
+void FoFiType1::getFontMatrix(double *mat)
+{
+    int i;
+
+    if (!parsed) {
+        parse();
+    }
+    for (i = 0; i < 6; ++i) {
+        mat[i] = fontMatrix[i];
+    }
 }
 
 void FoFiType1::writeEncoded(const char **newEncoding, FoFiOutputFunc outputFunc, void *outputStream) const
@@ -176,132 +208,155 @@ char *FoFiType1::getNextLine(char *line) const
     return line;
 }
 
-static const char tokenSeparators[] = " \t\n\r";
-
-class FoFiType1Tokenizer
-{
-public:
-    explicit FoFiType1Tokenizer(std::string_view &&stringViewA) : stringView(stringViewA) { }
-
-    std::optional<std::string_view> getToken()
-    {
-        const auto length = stringView.length();
-        if (currentPos >= length) {
-            return {};
-        }
-
-        std::string_view::size_type pos = stringView.find_first_of(tokenSeparators, currentPos);
-        while (pos == currentPos) {
-            // skip multiple contiguous separators
-            ++currentPos;
-            pos = stringView.find_first_of(tokenSeparators, currentPos);
-        }
-        if (pos == std::string_view::npos) {
-            const auto tokenLength = length - currentPos;
-            if (tokenLength > 0) {
-                std::string_view token = stringView.substr(currentPos, tokenLength);
-                currentPos = length;
-                return token;
-            } else {
-                currentPos = length;
-                return {};
-            }
-        }
-
-        std::string_view token = stringView.substr(currentPos, pos - currentPos);
-
-        currentPos = pos + 1;
-
-        return token;
-    }
-
-private:
-    std::string_view::size_type currentPos = 0;
-    const std::string_view stringView;
-};
-
 void FoFiType1::parse()
 {
-    FoFiType1Tokenizer tokenizer(std::string_view(reinterpret_cast<const char *>(file), len));
-    while (name.empty() || !encoding) {
-        const std::optional<std::string_view> token = tokenizer.getToken();
+    char *line, *line1, *firstLine, *p, *p2;
+    char buf[256];
+    char c;
+    int n, code, base, i, j;
+    char *tokptr;
+    bool gotMatrix, continueLine;
 
-        if (!token) {
-            break;
-        }
+    gotMatrix = false;
+    for (i = 1, line = (char *)file; i <= 100 && line && (!name || !encoding); ++i) {
 
-        if (name.empty() && token == "/FontName") {
-            const std::optional<std::string_view> fontNameToken = tokenizer.getToken();
-            if (!fontNameToken) {
-                break;
+        // get font name
+        if (!name && (line + 9 <= (char *)file + len) && !strncmp(line, "/FontName", 9)) {
+            const auto availableFile = (char *)file + len - line;
+            const int lineLen = static_cast<int>(availableFile < 255 ? availableFile : 255);
+            strncpy(buf, line, lineLen);
+            buf[lineLen] = '\0';
+            if ((p = strchr(buf + 9, '/')) && (p = strtok_r(p + 1, " \t\n\r", &tokptr))) {
+                name = copyString(p);
             }
+            line = getNextLine(line);
 
-            // Skip the /
-            name = fontNameToken->substr(1);
-
-        } else if (!encoding && token == "/Encoding") {
-            const std::optional<std::string_view> token2 = tokenizer.getToken();
-            if (!token2) {
-                break;
+            // get encoding
+        } else if (!encoding && (line + 30 <= (char *)file + len) && !strncmp(line, "/Encoding StandardEncoding def", 30)) {
+            encoding = (char **)fofiType1StandardEncoding;
+        } else if (!encoding && (line + 19 <= (char *)file + len) && !strncmp(line, "/Encoding 256 array", 19)) {
+            encoding = (char **)gmallocn(256, sizeof(char *));
+            for (j = 0; j < 256; ++j) {
+                encoding[j] = nullptr;
             }
-
-            const std::optional<std::string_view> token3 = tokenizer.getToken();
-            if (!token3) {
-                break;
-            }
-
-            if (token2 == "StandardEncoding" && token3 == "def") {
-                encoding = (char **)fofiType1StandardEncoding;
-            } else if (token2 == "256" && token3 == "array") {
-                encoding = (char **)gmallocn(256, sizeof(char *));
-                for (int j = 0; j < 256; ++j) {
-                    encoding[j] = nullptr;
+            continueLine = false;
+            for (j = 0, line = getNextLine(line); j < 300 && line && (line1 = getNextLine(line)); ++j, line = line1) {
+                if ((n = (int)(line1 - line)) > 255) {
+                    error(errSyntaxWarning, -1, "FoFiType1::parse a line has more than 255 characters, we don't support this");
+                    n = 255;
                 }
-
-                while (true) {
-                    const std::optional<std::string_view> encodingToken = tokenizer.getToken();
-                    if (!encodingToken) {
+                if (continueLine) {
+                    continueLine = false;
+                    if ((line1 - firstLine) + 1 > (int)sizeof(buf)) {
                         break;
                     }
-
-                    if (encodingToken == "dup") {
-                        std::optional<std::string_view> codeToken = tokenizer.getToken();
-                        if (!codeToken) {
+                    p = firstLine;
+                    p2 = buf;
+                    while (p < line1) {
+                        if (*p == '\n' || *p == '\r') {
+                            *p2++ = ' ';
+                            p++;
+                        } else {
+                            *p2++ = *p++;
+                        }
+                    }
+                    *p2 = '\0';
+                } else {
+                    firstLine = line;
+                    strncpy(buf, line, n);
+                    buf[n] = '\0';
+                }
+                for (p = buf; *p == ' ' || *p == '\t'; ++p) {
+                    ;
+                }
+                if (!strncmp(p, "dup", 3)) {
+                    while (true) {
+                        p += 3;
+                        for (; *p == ' ' || *p == '\t'; ++p) {
+                            ;
+                        }
+                        code = 0;
+                        if (*p == '8' && p[1] == '#') {
+                            base = 8;
+                            p += 2;
+                        } else if (*p >= '0' && *p <= '9') {
+                            base = 10;
+                        } else if (*p == '\n' || *p == '\r') {
+                            continueLine = true;
+                            break;
+                        } else {
                             break;
                         }
-
-                        std::optional<std::string_view> nameToken;
-                        // Sometimes font data has code and name together without spacing i.e. 33/exclam
-                        // if that happens don't call getToken again and just split codeToken in 2
-                        const auto slashPositionInCodeToken = codeToken->find('/');
-                        if (slashPositionInCodeToken != std::string_view::npos) {
-                            nameToken = codeToken->substr(slashPositionInCodeToken, codeToken->length() - slashPositionInCodeToken);
-                            codeToken = codeToken->substr(0, slashPositionInCodeToken);
-                        } else {
-                            nameToken = tokenizer.getToken();
+                        for (; *p >= '0' && *p < '0' + base && code < INT_MAX / (base + (*p - '0')); ++p) {
+                            code = code * base + (*p - '0');
                         }
-
-                        if (!nameToken) {
+                        for (; *p == ' ' || *p == '\t'; ++p) {
+                            ;
+                        }
+                        if (*p == '\n' || *p == '\r') {
+                            continueLine = true;
+                            break;
+                        } else if (*p != '/') {
                             break;
                         }
-
-                        int code = 0;
-                        if (codeToken->length() > 2 && codeToken->at(0) == '8' && codeToken->at(1) == '#') {
-                            std::from_chars(codeToken->data() + 2, codeToken->data() + codeToken->length(), code, 8);
-                        } else {
-                            std::from_chars(codeToken->data(), codeToken->data() + codeToken->length(), code);
+                        ++p;
+                        for (p2 = p; *p2 && *p2 != ' ' && *p2 != '\t'; ++p2) {
+                            ;
                         }
-
-                        if (code >= 0 && code < 256 && nameToken->length() > 1) {
+                        if (code >= 0 && code < 256) {
+                            c = *p2;
+                            *p2 = '\0';
                             gfree(encoding[code]);
-                            encoding[code] = copyString(nameToken->data() + 1, nameToken->length() - 1);
+                            encoding[code] = copyString(p);
+                            *p2 = c;
                         }
-
-                    } else if (encodingToken == "def") {
+                        for (p = p2; *p == ' ' || *p == '\t'; ++p) {
+                            ;
+                        }
+                        if (*p == '\n' || *p == '\r') {
+                            continueLine = true;
+                            break;
+                        }
+                        if (strncmp(p, "put", 3)) {
+                            break;
+                        }
+                        for (p += 3; *p == ' ' || *p == '\t'; ++p) {
+                            ;
+                        }
+                        if (strncmp(p, "dup", 3)) {
+                            break;
+                        }
+                    }
+                } else {
+                    if (strtok_r(buf, " \t", &tokptr) && (p = strtok_r(nullptr, " \t\n\r", &tokptr)) && !strcmp(p, "def")) {
                         break;
                     }
                 }
             }
+            //~ check for getinterval/putinterval junk
+
+        } else if (!gotMatrix && (line + 11 <= (char *)file + len) && !strncmp(line, "/FontMatrix", 11)) {
+            const auto availableFile = (char *)file + len - (line + 11);
+            const int bufLen = static_cast<int>(availableFile < 255 ? availableFile : 255);
+            strncpy(buf, line + 11, bufLen);
+            buf[bufLen] = '\0';
+            if ((p = strchr(buf, '['))) {
+                ++p;
+                if ((p2 = strchr(p, ']'))) {
+                    *p2 = '\0';
+                    for (j = 0; j < 6; ++j) {
+                        if ((p = strtok_r(j == 0 ? p : nullptr, " \t\n\r", &tokptr))) {
+                            fontMatrix[j] = atof(p);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+            gotMatrix = true;
+
+        } else {
+            line = getNextLine(line);
         }
     }
 

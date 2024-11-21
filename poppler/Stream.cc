@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Jeff Muizelaar <jeff@infidigm.net>
-// Copyright (C) 2006-2010, 2012-2014, 2016-2021, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2010, 2012-2014, 2016-2021 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007 Krzysztof Kowalczyk <kkowalczyk@gmail.com>
 // Copyright (C) 2008 Julien Rebetez <julien@fhtagn.net>
 // Copyright (C) 2009 Carlos Garcia Campos <carlosgc@gnome.org>
@@ -26,7 +26,7 @@
 // Copyright (C) 2012, 2013, 2020 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
-// Copyright (C) 2012, 2024 Even Rouault <even.rouault@spatialys.com>
+// Copyright (C) 2012 Even Rouault <even.rouault@mines-paris.org>
 // Copyright (C) 2013, 2017, 2018 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013, 2018 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013 Pino Toscano <pino@kde.org>
@@ -41,7 +41,6 @@
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -446,11 +445,6 @@ void FileOutStream::put(char c)
     fputc(c, f);
 }
 
-size_t FileOutStream::write(std::span<unsigned char> data)
-{
-    return fwrite(data.data(), sizeof(decltype(data)::element_type), data.size(), f);
-}
-
 void FileOutStream::printf(const char *format, ...)
 {
     va_list argptr;
@@ -662,7 +656,7 @@ bool ImageStream::getPixel(unsigned char *pix)
 
 unsigned char *ImageStream::getLine()
 {
-    if (unlikely(inputLine == nullptr || imgLine == nullptr)) {
+    if (unlikely(inputLine == nullptr)) {
         return nullptr;
     }
 
@@ -734,10 +728,9 @@ StreamPredictor::StreamPredictor(Stream *strA, int predictorA, int widthA, int n
     predLine = nullptr;
     ok = false;
 
-    if (checkedMultiply(width, nComps, &nVals)) {
-        return;
-    }
-    if (width <= 0 || nComps <= 0 || nBits <= 0 || nComps > gfxColorMaxComps || nBits > 16 || nVals >= (INT_MAX - 7) / nBits) { // check for overflow in rowBytes
+    nVals = width * nComps;
+    if (width <= 0 || nComps <= 0 || nBits <= 0 || nComps > gfxColorMaxComps || nBits > 16 || width >= INT_MAX / nComps || // check for overflow in nVals
+        nVals >= (INT_MAX - 7) / nBits) { // check for overflow in rowBytes
         return;
     }
     pixBytes = (nComps * nBits + 7) >> 3;

@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2008 Kees Cook <kees@outflux.net>
-// Copyright (C) 2008, 2010, 2017-2021, 2023, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2017-2021 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Jakub Wilk <jwilk@jwilk.net>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
@@ -25,7 +25,6 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
-// Copyright (C) 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -114,44 +113,6 @@ inline bool operator<(const Ref lhs, const Ref rhs) noexcept
     return lhs.gen < rhs.gen;
 }
 
-struct RefRecursionChecker
-{
-    RefRecursionChecker() { }
-
-    RefRecursionChecker(const RefRecursionChecker &) = delete;
-    RefRecursionChecker &operator=(const RefRecursionChecker &) = delete;
-
-    bool insert(Ref ref)
-    {
-        if (ref == Ref::INVALID()) {
-            return true;
-        }
-
-        // insert returns std::pair<iterator,bool>
-        // where the bool is whether the insert succeeded
-        return alreadySeenRefs.insert(ref.num).second;
-    }
-
-    void remove(Ref ref) { alreadySeenRefs.erase(ref.num); }
-
-private:
-    std::set<int> alreadySeenRefs;
-};
-
-struct RefRecursionCheckerRemover
-{
-    // Removes ref from c when this object is removed
-    RefRecursionCheckerRemover(RefRecursionChecker &c, Ref r) : checker(c), ref(r) { }
-    ~RefRecursionCheckerRemover() { checker.remove(ref); }
-
-    RefRecursionCheckerRemover(const RefRecursionCheckerRemover &) = delete;
-    RefRecursionCheckerRemover &operator=(const RefRecursionCheckerRemover &) = delete;
-
-private:
-    RefRecursionChecker &checker;
-    Ref ref;
-};
-
 namespace std {
 
 template<>
@@ -230,11 +191,6 @@ public:
         assert(stringA);
         type = objString;
         string = stringA;
-    }
-    explicit Object(std::string &&stringA)
-    {
-        type = objString;
-        string = new GooString(stringA);
     }
     Object(ObjType typeA, GooString *stringA)
     {
