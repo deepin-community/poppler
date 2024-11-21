@@ -13,6 +13,8 @@
  * Copyright (C) 2020, Thorsten Behrens <Thorsten.Behrens@CIB.de>
  * Copyright (C) 2020, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Theofilos Intzoglou <int.teo@gmail.com>
+ * Copyright (C) 2023, 2024, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2024, Pratham Gandhi <ppg.1382@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +37,7 @@
 #include <functional>
 #include <memory>
 #include <ctime>
+#include <optional>
 #include <QtCore/QDateTime>
 #include <QtCore/QVector>
 #include <QtCore/QList>
@@ -481,6 +484,14 @@ public:
      */
     bool canBeSpellChecked() const;
 
+    /**
+      Sets the text inside the Appearance Stream to the specified
+      \p text
+
+      \since 24.08
+     */
+    void setAppearanceChoiceText(const QString &text);
+
 private:
     Q_DISABLE_COPY(FormFieldChoice)
 };
@@ -531,6 +542,24 @@ public:
         DistinguishedName,
         EmailAddress,
         Organization,
+    };
+
+    /** A signing key can be located in different places
+     sometimes. For the user, it might be easier to pick
+     the key located on a card if it has some visual
+     indicator that it is somehow removable.
+
+     \note a keylocation for a certificate without a private
+     key (cannot be used for signing) will likely be "Unknown"
+
+     \since 23.09
+     */
+    enum class KeyLocation
+    {
+        Unknown, /** We don't know the location */
+        Other, /** We know the location, but it is somehow not covered by this enum */
+        Computer, /** The key is on this computer */
+        HardwareToken /** The key is on a dedicated hardware token, either a smartcard or a dedicated usb token (e.g. gnuk, nitrokey or yubikey) */
     };
 
     CertificateInfo();
@@ -616,6 +645,13 @@ public:
      */
     bool checkPassword(const QString &password) const;
 
+    /**
+     The storage location for this key
+
+     \since 23.09
+     */
+    KeyLocation keyLocation() const;
+
     CertificateInfo(const CertificateInfo &other);
     CertificateInfo &operator=(const CertificateInfo &other);
 
@@ -660,7 +696,8 @@ public:
         CertificateRevoked, ///< The certificate was revoked by the issuing certificate authority.
         CertificateExpired, ///< The signing time is outside the validity bounds of this certificate.
         CertificateGenericError, ///< The certificate could not be verified.
-        CertificateNotVerified ///< The certificate is not yet verified.
+        CertificateNotVerified, ///< The certificate is not yet verified.
+        CertificateVerificationInProgress ///< The certificate is not yet verified but is in progress in the background. See \ref validateAsync \since 24.05
     };
 
     /**
@@ -758,8 +795,30 @@ public:
 
 private:
     Q_DECLARE_PRIVATE(SignatureValidationInfo)
-
+    friend class FormFieldSignature;
     QSharedPointer<SignatureValidationInfoPrivate> d_ptr;
+};
+
+/**
+ * Object help waiting for some async event
+ *
+ * \since 24.05
+ */
+class AsyncObjectPrivate;
+class POPPLER_QT5_EXPORT AsyncObject : public QObject // clazy:exclude=ctor-missing-parent-argument
+{
+    Q_OBJECT
+public:
+    /* Constructor. On purpose not having a QObject parameter
+       It will be returned by shared_ptr or unique_ptr
+    */
+    AsyncObject();
+    ~AsyncObject() override;
+Q_SIGNALS:
+    void done();
+public Q_SLOTS:
+private:
+    std::unique_ptr<AsyncObjectPrivate> d;
 };
 
 /**
@@ -811,8 +870,16 @@ public:
       Validate the signature with now as validation time.
 
       Reset signature validatation info of scoped instance.
+
+      \note depending on the backend, some options are only
+      partially respected. In case of the NSS backend, the two options
+      requiring network access, AIAFetch and OCSP,
+      can be toggled individually. In case of the GPG backend, if either
+      OCSP is used or AIAFetch is used, the other one is also used.
+
+      \deprecated Please rewrite to the async version, that allows the network traffic part of fetching to happen in the background
      */
-    SignatureValidationInfo validate(ValidateOptions opt) const;
+    POPPLER_QT5_DEPRECATED SignatureValidationInfo validate(ValidateOptions opt) const;
 
     /**
       Validate the signature with @p validationTime as validation time.
@@ -820,8 +887,44 @@ public:
       Reset signature validatation info of scoped instance.
 
       \since 0.58
+
+      \note depending on the backend, some options are only
+      partially respected. In case of the NSS backend, the two options
+      requiring network access, AIAFetch and OCSP,
+      can be toggled individually. In case of the GPG backend, if either
+      OCSP is used or AIAFetch is used, the other one is also used.
+
+      \deprecated Please rewrite to the async version, that allows the network traffic part of fetching to happen in the background
      */
-    SignatureValidationInfo validate(int opt, const QDateTime &validationTime) const;
+    POPPLER_QT5_DEPRECATED SignatureValidationInfo validate(int opt, const QDateTime &validationTime) const;
+
+    /**
+      Validate the signature with @p validationTime as validation time.
+
+      Reset signature validatation info of scoped instance.
+
+      \since 24.05
+
+      \note depending on the backend, some options are only
+      partially respected. In case of the NSS backend, the two options
+      requiring network access, AIAFetch and OCSP,
+      can be toggled individually. In case of the GPG backend, if either
+      OCSP is used or AIAFetch is used, the other one is also used.
+
+      \note certificate validation will have started when this function return. See \ref validateResult on how to get certifcate validation
+      \note connections to \ref AsyncObject must happen by the caller
+      before returning control to the event loop, else signals is not guaranteed to be delivered
+    */
+    std::pair<SignatureValidationInfo, std::shared_ptr<AsyncObject>> validateAsync(ValidateOptions opt, const QDateTime &validationTime = {}) const;
+
+    /**
+     * \return the updated signature validation info from validateAsync
+     * \note that this function will block if the result is not yet ready.
+     * Wait for the \ref AsyncObject::done signal to avoid this function blocking on an inconvenient time
+     *
+     * \since 24.05
+     */
+    SignatureValidationInfo::CertificateStatus validateResult() const;
 
     /**
      * \since 22.02
@@ -847,11 +950,63 @@ private:
 };
 
 /**
+ * Possible compiled in backends for signature handling
+ *
+ * \since 23.06
+ */
+enum class CryptoSignBackend
+{
+    NSS,
+    GPG
+};
+
+/**
+ * The available compiled-in backends
+ *
+ * \since 23.06
+ */
+QVector<CryptoSignBackend> POPPLER_QT5_EXPORT availableCryptoSignBackends();
+
+/**
+ * Returns current active backend or nullopt if none is active
+ *
+ * \note there will always be an active backend if there is available backends
+ *
+ * \since 23.06
+ */
+std::optional<CryptoSignBackend> POPPLER_QT5_EXPORT activeCryptoSignBackend();
+
+/**
+ * Sets active backend
+ *
+ * \return true on success
+ *
+ * \since 23.06
+ */
+bool POPPLER_QT5_EXPORT setActiveCryptoSignBackend(CryptoSignBackend backend);
+
+enum class CryptoSignBackendFeature
+{
+    /// If the backend itself out of band requests passwords
+    /// or if the host applicaion somehow must do it
+    BackendAsksPassphrase
+};
+
+/**
+ * Queries if a backend supports or not supports a given feature.
+ *
+ * \since 23.06
+ */
+bool POPPLER_QT5_EXPORT hasCryptoSignBackendFeature(CryptoSignBackend, CryptoSignBackendFeature);
+
+/**
   Returns is poppler was compiled with NSS support
+
+  \deprecated Use availableBackends instead
 
   \since 21.01
 */
-bool POPPLER_QT5_EXPORT hasNSSSupport();
+bool POPPLER_QT5_DEPRECATED POPPLER_QT5_EXPORT hasNSSSupport();
 
 /**
   Return vector of suitable signing certificates

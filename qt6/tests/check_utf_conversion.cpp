@@ -1,5 +1,5 @@
 #include <QtCore/QScopedPointer>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include <poppler-private.h>
 
@@ -29,8 +29,9 @@ static bool compare(const char *a, const char *b)
 static bool compare(const uint16_t *a, const uint16_t *b)
 {
     while (*a && *b) {
-        if (*a++ != *b++)
+        if (*a++ != *b++) {
             return false;
+        }
     }
     return *a == *b;
 }
@@ -38,8 +39,9 @@ static bool compare(const uint16_t *a, const uint16_t *b)
 static bool compare(const Unicode *a, const char *b, int len)
 {
     for (int i = 0; i < len; i++) {
-        if (a[i] != (Unicode)b[i])
+        if (a[i] != (Unicode)b[i]) {
             return false;
+        }
     }
 
     return true;
@@ -48,8 +50,9 @@ static bool compare(const Unicode *a, const char *b, int len)
 static bool compare(const Unicode *a, const uint16_t *b, int len)
 {
     for (int i = 0; i < len; i++) {
-        if (a[i] != b[i])
+        if (a[i] != b[i]) {
             return false;
+        }
     }
 
     return true;
@@ -89,7 +92,7 @@ void TestUTFConversion::testUTF()
     QCOMPARE(len, s.size()); // QString size() returns number of code units, not code points
     Q_ASSERT(len < (int)sizeof(utf16Buf)); // if this fails, make utf16Buf larger
 
-    len = utf8ToUtf16(str, utf16Buf);
+    len = utf8ToUtf16(str, INT_MAX, utf16Buf, sizeof(utf16Buf));
     QVERIFY(compare(utf16Buf, s.utf16()));
     QCOMPARE(len, s.size());
 
@@ -98,9 +101,9 @@ void TestUTFConversion::testUTF()
     free(utf16String);
 
     std::string sUtf8(str);
-    std::unique_ptr<GooString> gsUtf16_a(utf8ToUtf16WithBom(sUtf8));
+    std::string gsUtf16_a(utf8ToUtf16WithBom(sUtf8));
     std::unique_ptr<GooString> gsUtf16_b(Poppler::QStringToUnicodeGooString(s));
-    QCOMPARE(gsUtf16_a->cmp(gsUtf16_b.get()), 0);
+    QCOMPARE(gsUtf16_b->cmp(gsUtf16_a), 0);
 
     // UTF-16 to UTF-8
 
@@ -108,7 +111,7 @@ void TestUTFConversion::testUTF()
     QCOMPARE(len, (int)strlen(str));
     Q_ASSERT(len < (int)sizeof(utf8Buf)); // if this fails, make utf8Buf larger
 
-    len = utf16ToUtf8(s.utf16(), utf8Buf);
+    len = utf16ToUtf8(s.utf16(), INT_MAX, utf8Buf, sizeof(utf8Buf));
     QVERIFY(compare(utf8Buf, str));
     QCOMPARE(len, (int)strlen(str));
 
@@ -128,22 +131,19 @@ void TestUTFConversion::testUnicodeToAscii7()
     // malloc() always returns 8-byte aligned memory addresses.
     GooString *goo = Poppler::QStringToUnicodeGooString(QString::fromUtf8("®©©©©©©©©©©©©©©©©©©©©")); // clazy:exclude=qstring-allocations
 
-    Unicode *in;
-    const int in_len = TextStringToUCS4(goo->toStr(), &in);
+    const std::vector<Unicode> in = TextStringToUCS4(goo->toStr());
 
     delete goo;
 
     int in_norm_len;
     int *in_norm_idx;
-    Unicode *in_norm = unicodeNormalizeNFKC(in, in_len, &in_norm_len, &in_norm_idx, true);
-
-    free(in);
+    Unicode *in_norm = unicodeNormalizeNFKC(in.data(), in.size(), &in_norm_len, &in_norm_idx, true);
 
     Unicode *out;
     int out_len;
     int *out_ascii_idx;
 
-    unicodeToAscii7(in_norm, in_norm_len, &out, &out_len, in_norm_idx, &out_ascii_idx);
+    unicodeToAscii7(std::span(in_norm, in_norm_len), &out, &out_len, in_norm_idx, &out_ascii_idx);
 
     free(in_norm);
     free(in_norm_idx);
@@ -169,25 +169,24 @@ void TestUTFConversion::testUnicodeLittleEndian()
     // Let's assert both GooString's are different
     QVERIFY(GooUTF16LE != GooUTF16BE);
 
-    Unicode *UCS4fromLE, *UCS4fromBE;
-    const int len1 = TextStringToUCS4(GooUTF16LE, &UCS4fromLE);
-    const int len2 = TextStringToUCS4(GooUTF16BE, &UCS4fromBE);
+    const std::vector<Unicode> UCS4fromLE = TextStringToUCS4(GooUTF16LE);
+    const std::vector<Unicode> UCS4fromBE = TextStringToUCS4(GooUTF16BE);
 
     // len is 4 because TextStringToUCS4() removes the two leading Byte Order Mark (BOM) code points
-    QCOMPARE(len1, len2);
-    QCOMPARE(len1, 4);
+    QCOMPARE(UCS4fromLE.size(), UCS4fromBE.size());
+    QCOMPARE(UCS4fromLE.size(), 4);
 
     // Check that now after conversion, UCS4fromLE and UCS4fromBE are now the same
-    for (int i = 0; i < len1; i++) {
+    for (size_t i = 0; i < UCS4fromLE.size(); i++) {
         QCOMPARE(UCS4fromLE[i], UCS4fromBE[i]);
     }
 
     const QString expected = QStringLiteral("HI!☑");
 
     // Do some final verifications, checking the strings to be "HI!"
-    QVERIFY(*UCS4fromLE == *UCS4fromBE);
-    QVERIFY(compare(UCS4fromLE, expected.utf16(), len1));
-    QVERIFY(compare(UCS4fromBE, expected.utf16(), len1));
+    QVERIFY(UCS4fromLE == UCS4fromBE);
+    QVERIFY(compare(UCS4fromLE.data(), expected.utf16(), UCS4fromLE.size()));
+    QVERIFY(compare(UCS4fromBE.data(), expected.utf16(), UCS4fromBE.size()));
 }
 
 QTEST_GUILESS_MAIN(TestUTFConversion)

@@ -91,8 +91,9 @@ bool PDFConverter::convert()
     }
 
     bool deleteFile = false;
-    if (QFile *file = qobject_cast<QFile *>(dev))
+    if (QFile *file = qobject_cast<QFile *>(dev)) {
         deleteFile = !file->exists();
+    }
 
     int errorCode = errNone;
     QIODeviceOutStream stream(dev);
@@ -106,10 +107,11 @@ bool PDFConverter::convert()
         if (deleteFile) {
             qobject_cast<QFile *>(dev)->remove();
         }
-        if (errorCode == errOpenFile)
+        if (errorCode == errOpenFile) {
             d->lastError = OpenOutputError;
-        else
+        } else {
             d->lastError = NotSupportedInputFileError;
+        }
     }
 
     return (errorCode == errNone);
@@ -136,11 +138,11 @@ bool PDFConverter::sign(const NewSignatureData &data)
     std::unique_ptr<GooString> gSignatureLeftText = std::unique_ptr<GooString>(QStringToUnicodeGooString(data.signatureLeftText()));
     const auto reason = std::unique_ptr<GooString>(data.reason().isEmpty() ? nullptr : QStringToUnicodeGooString(data.reason()));
     const auto location = std::unique_ptr<GooString>(data.location().isEmpty() ? nullptr : QStringToUnicodeGooString(data.location()));
-    const auto ownerPwd = std::make_unique<GooString>(data.documentOwnerPassword().constData());
-    const auto userPwd = std::make_unique<GooString>(data.documentUserPassword().constData());
+    const auto ownerPwd = std::optional<GooString>(data.documentOwnerPassword().constData());
+    const auto userPwd = std::optional<GooString>(data.documentUserPassword().constData());
     return doc->sign(d->outputFileName.toUtf8().constData(), data.certNickname().toUtf8().constData(), data.password().toUtf8().constData(), QStringToGooString(data.fieldPartialName()), data.page() + 1,
                      boundaryToPdfRectangle(destPage, data.boundingRectangle(), Annotation::FixedRotation), *gSignatureText, *gSignatureLeftText, data.fontSize(), data.leftFontSize(), convertQColor(data.fontColor()), data.borderWidth(),
-                     convertQColor(data.borderColor()), convertQColor(data.backgroundColor()), reason.get(), location.get(), data.imagePath().toStdString(), ownerPwd.get(), userPwd.get());
+                     convertQColor(data.borderColor()), convertQColor(data.backgroundColor()), reason.get(), location.get(), data.imagePath().toStdString(), ownerPwd, userPwd);
 }
 
 struct PDFConverter::NewSignatureData::NewSignatureDataPrivate

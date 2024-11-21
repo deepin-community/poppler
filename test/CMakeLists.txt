@@ -14,11 +14,6 @@ endif ()
 if (GTK_FOUND)
 
   include_directories(
-    SYSTEM
-    ${GTK3_INCLUDE_DIRS}
-  )
-
-  include_directories(
     ${CMAKE_SOURCE_DIR}/glib
     ${CMAKE_BINARY_DIR}/glib
   )
@@ -27,7 +22,8 @@ if (GTK_FOUND)
     gtk-test.cc
   )
   poppler_add_test(gtk-test BUILD_GTK_TESTS ${gtk_splash_test_SRCS})
-  target_link_libraries(gtk-test ${CAIRO_LIBRARIES} poppler-glib ${GTK3_LIBRARIES})
+  target_link_libraries(gtk-test ${CAIRO_LIBRARIES} poppler-glib PkgConfig::GTK3)
+  target_include_directories(gtk-test SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
 
   if (HAVE_CAIRO)
 
@@ -38,14 +34,33 @@ if (GTK_FOUND)
       ${CMAKE_SOURCE_DIR}/poppler/CairoRescaleBox.cc
     )
     poppler_add_test(pdf-inspector BUILD_GTK_TESTS ${pdf_inspector_SRCS})
-    target_link_libraries(pdf-inspector ${CAIRO_LIBRARIES} ${FREETYPE_LIBRARIES} ${common_libs} ${GTK3_LIBRARIES} poppler)
+    target_link_libraries(pdf-inspector ${CAIRO_LIBRARIES} Freetype::Freetype ${common_libs} PkgConfig::GTK3 poppler)
+    target_include_directories(pdf-inspector SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
     target_compile_definitions(pdf-inspector PRIVATE -DSRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-    if(CMAKE_USE_PTHREADS_INIT)
-       target_link_libraries(pdf-inspector Threads::Threads)
-    endif()
-
   endif ()
 
+endif ()
+
+if (HAVE_CAIRO)
+  include(CheckCXXSymbolExists)
+  set (CMAKE_REQUIRED_INCLUDES ${CAIRO_INCLUDE_DIRS})
+  check_cxx_symbol_exists(CAIRO_HAS_PNG_FUNCTIONS "cairo.h" HAVE_CAIRO_PNG)
+  check_cxx_symbol_exists(CAIRO_HAS_PDF_SURFACE "cairo.h" HAVE_CAIRO_PDF)
+  check_cxx_symbol_exists(CAIRO_HAS_PS_SURFACE "cairo.h" HAVE_CAIRO_PS)
+  check_cxx_symbol_exists(CAIRO_HAS_SVG_SURFACE "cairo.h" HAVE_CAIRO_SVG)
+
+  if (HAVE_CAIRO_PNG AND HAVE_CAIRO_PDF AND HAVE_CAIRO_PS AND HAVE_CAIRO_SVG)
+    find_package(Threads)
+    set(cairo_thread_test_SRCS
+      cairo-thread-test.cc
+      ${CMAKE_SOURCE_DIR}/poppler/CairoFontEngine.cc
+      ${CMAKE_SOURCE_DIR}/poppler/CairoOutputDev.cc
+      ${CMAKE_SOURCE_DIR}/poppler/CairoRescaleBox.cc
+      )
+    add_executable(cairo-thread-test ${cairo_thread_test_SRCS})
+    target_link_libraries(cairo-thread-test ${CAIRO_LIBRARIES} Freetype::Freetype Threads::Threads poppler)
+    target_include_directories(cairo-thread-test SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
+  endif ()
 endif ()
 
 set (pdf_fullrewrite_SRCS

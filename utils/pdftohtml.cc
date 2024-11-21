@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2007-2008, 2010, 2012, 2015-2020 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2012, 2015-2020, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Mike Slegeir <tehpola@yahoo.com>
 // Copyright (C) 2010, 2013 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
@@ -28,8 +28,9 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Thibaut Brard <thibaut.brard@gmail.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright (C) 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2021, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -71,6 +72,7 @@
 #include "goo/gfile.h"
 #include "Win32Console.h"
 #include "InMemoryFile.h"
+#include "UTF.h"
 
 static int firstPage = 1;
 static int lastPage = 0;
@@ -99,7 +101,7 @@ static char ownerPassword[33] = "";
 static char userPassword[33] = "";
 static bool printVersion = false;
 
-static GooString *getInfoString(Dict *infoDict, const char *key);
+static std::unique_ptr<GooString> getInfoString(Dict *infoDict, const char *key);
 static GooString *getInfoDate(Dict *infoDict, const char *key);
 
 static char textEncName[128] = "";
@@ -158,14 +160,17 @@ int main(int argc, char *argv[])
 {
     std::unique_ptr<PDFDoc> doc;
     GooString *fileName = nullptr;
-    GooString *docTitle = nullptr;
-    GooString *author = nullptr, *keywords = nullptr, *subject = nullptr, *date = nullptr;
+    std::unique_ptr<GooString> docTitle;
+    std::unique_ptr<GooString> author;
+    std::unique_ptr<GooString> keywords;
+    std::unique_ptr<GooString> subject;
+    GooString *date = nullptr;
     GooString *htmlFileName = nullptr;
     HtmlOutputDev *htmlOut = nullptr;
     SplashOutputDev *splashOut = nullptr;
     bool doOutline;
     bool ok;
-    GooString *ownerPW, *userPW;
+    std::optional<GooString> ownerPW, userPW;
     Object info;
     int exit_status = EXIT_FAILURE;
 
@@ -206,14 +211,10 @@ int main(int argc, char *argv[])
 
     // open PDF file
     if (ownerPassword[0]) {
-        ownerPW = new GooString(ownerPassword);
-    } else {
-        ownerPW = nullptr;
+        ownerPW = GooString(ownerPassword);
     }
     if (userPassword[0]) {
-        userPW = new GooString(userPassword);
-    } else {
-        userPW = nullptr;
+        userPW = GooString(userPassword);
     }
 
     fileName = new GooString(argv[1]);
@@ -225,12 +226,6 @@ int main(int argc, char *argv[])
 
     doc = PDFDocFactory().createPDFDoc(*fileName, ownerPW, userPW);
 
-    if (userPW) {
-        delete userPW;
-    }
-    if (ownerPW) {
-        delete ownerPW;
-    }
     if (!doc->isOk()) {
         goto error;
     }
@@ -271,17 +266,20 @@ int main(int argc, char *argv[])
         goto error;
     } else {
         const char *p = fileName->c_str() + fileName->getLength() - 4;
-        if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF"))
+        if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF")) {
             htmlFileName = new GooString(fileName->c_str(), fileName->getLength() - 4);
-        else
+        } else {
             htmlFileName = fileName->copy();
+        }
         //   htmlFileName->append(".html");
     }
 
-    if (scale > 3.0)
+    if (scale > 3.0) {
         scale = 3.0;
-    if (scale < 0.5)
+    }
+    if (scale < 0.5) {
         scale = 0.5;
+    }
 
     if (complexMode) {
         // noframes=false;
@@ -301,10 +299,12 @@ int main(int argc, char *argv[])
     }
 
     // get page range
-    if (firstPage < 1)
+    if (firstPage < 1) {
         firstPage = 1;
-    if (lastPage < 1 || lastPage > doc->getNumPages())
+    }
+    if (lastPage < 1 || lastPage > doc->getNumPages()) {
         lastPage = doc->getNumPages();
+    }
     if (lastPage < firstPage) {
         error(errCommandLine, -1, "Wrong page range given: the first page ({0:d}) can not be after the last page ({1:d}).", firstPage, lastPage);
         goto error;
@@ -317,37 +317,29 @@ int main(int argc, char *argv[])
         keywords = getInfoString(info.getDict(), "Keywords");
         subject = getInfoString(info.getDict(), "Subject");
         date = getInfoDate(info.getDict(), "ModDate");
-        if (!date)
+        if (!date) {
             date = getInfoDate(info.getDict(), "CreationDate");
+        }
     }
-    if (!docTitle)
-        docTitle = new GooString(htmlFileName);
+    if (!docTitle) {
+        docTitle = std::make_unique<GooString>(htmlFileName);
+    }
 
-    if (!singleHtml)
+    if (!singleHtml) {
         rawOrder = complexMode; // todo: figure out what exactly rawOrder do :)
-    else
+    } else {
         rawOrder = singleHtml;
+    }
 
     doOutline = doc->getOutline()->getItems() != nullptr;
     // write text file
     htmlOut = new HtmlOutputDev(doc->getCatalog(), htmlFileName->c_str(), docTitle->c_str(), author ? author->c_str() : nullptr, keywords ? keywords->c_str() : nullptr, subject ? subject->c_str() : nullptr, date ? date->c_str() : nullptr,
                                 rawOrder, firstPage, doOutline);
-    delete docTitle;
-    if (author) {
-        delete author;
-    }
-    if (keywords) {
-        delete keywords;
-    }
-    if (subject) {
-        delete subject;
-    }
     if (date) {
         delete date;
     }
 
     if ((complexMode || singleHtml) && !xml && !ignore) {
-        GooString *imgFileName = nullptr;
         // White paper color
         SplashColor color;
         color[0] = color[1] = color[2] = 255;
@@ -362,11 +354,10 @@ int main(int argc, char *argv[])
             doc->displayPage(splashOut, pg, 72 * scale, 72 * scale, 0, true, false, false);
             SplashBitmap *bitmap = splashOut->getBitmap();
 
-            imgFileName = GooString::format("{0:s}{1:03d}.{2:s}", htmlFileName->c_str(), pg, extension);
-            auto f1 = dataUrls ? imf.open("wb") : fopen(imgFileName->c_str(), "wb");
+            const std::string imgFileName = GooString::format("{0:s}{1:03d}.{2:s}", htmlFileName->c_str(), pg, extension);
+            auto f1 = dataUrls ? imf.open("wb") : fopen(imgFileName.c_str(), "wb");
             if (!f1) {
-                fprintf(stderr, "Could not open %s\n", imgFileName->c_str());
-                delete imgFileName;
+                fprintf(stderr, "Could not open %s\n", imgFileName.c_str());
                 continue;
             }
             bitmap->writeImgFile(format, f1, 72 * scale, 72 * scale);
@@ -374,9 +365,8 @@ int main(int argc, char *argv[])
             if (dataUrls) {
                 htmlOut->addBackgroundImage(std::string((format == splashFormatJpeg) ? "data:image/jpeg;base64," : "data:image/png;base64,") + gbase64Encode(imf.getBuffer()));
             } else {
-                htmlOut->addBackgroundImage(gbasename(imgFileName->c_str()));
+                htmlOut->addBackgroundImage(gbasename(imgFileName.c_str()));
             }
-            delete imgFileName;
         }
 
         delete splashOut;
@@ -395,13 +385,14 @@ int main(int argc, char *argv[])
 error:
     delete fileName;
 
-    if (htmlFileName)
+    if (htmlFileName) {
         delete htmlFileName;
+    }
 
     return exit_status;
 }
 
-static GooString *getInfoString(Dict *infoDict, const char *key)
+static std::unique_ptr<GooString> getInfoString(Dict *infoDict, const char *key)
 {
     Object obj;
     // Raw value as read from PDF (may be in pdfDocEncoding or UCS2)
@@ -410,7 +401,7 @@ static GooString *getInfoString(Dict *infoDict, const char *key)
     Unicode *unicodeString;
     int unicodeLength;
     // Value HTML escaped and converted to desired encoding
-    GooString *encodedString = nullptr;
+    std::unique_ptr<GooString> encodedString;
     // Is rawString UCS2 (as opposed to pdfDocEncoding)
     bool isUnicode;
 
@@ -419,7 +410,7 @@ static GooString *getInfoString(Dict *infoDict, const char *key)
         rawString = obj.getString();
 
         // Convert rawString to unicode
-        if (rawString->hasUnicodeMarker()) {
+        if (hasUnicodeByteOrderMark(rawString->toStr())) {
             isUnicode = true;
             unicodeLength = (obj.getString()->getLength() - 2) / 2;
         } else {

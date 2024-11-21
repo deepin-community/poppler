@@ -1,4 +1,4 @@
-libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
+libpoppler-glib.so.8 libpoppler-glib8t64 #MINVER#
 * Build-Depends-Package: libpoppler-glib-dev
  (optional|regex)"^_Z.*@Base$" #CURVER#
  poppler_action_copy@Base 0.18.0
@@ -70,6 +70,12 @@ libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
  poppler_annot_square_get_type@Base 0.26.0
  poppler_annot_square_new@Base 0.26.0
  poppler_annot_square_set_interior_color@Base 0.26.0
+ poppler_annot_stamp_get_icon@Base 22.08.0
+ poppler_annot_stamp_get_type@Base 22.08.0
+ poppler_annot_stamp_icon_get_type@Base 22.08.0
+ poppler_annot_stamp_new@Base 22.08.0
+ poppler_annot_stamp_set_custom_image@Base 22.08.0
+ poppler_annot_stamp_set_icon@Base 22.08.0
  poppler_annot_text_get_icon@Base 0.18.0
  poppler_annot_text_get_is_open@Base 0.18.0
  poppler_annot_text_get_state@Base 0.18.0
@@ -97,6 +103,18 @@ libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
  poppler_attachment_save_to_callback@Base 0.18.0
  poppler_attachment_save_to_fd@Base 22.02.0
  poppler_backend_get_type@Base 0.18.0
+ poppler_certificate_info_copy@Base 23.08.0
+ poppler_certificate_info_free@Base 23.08.0
+ poppler_certificate_info_get_expiration_time@Base 23.08.0
+ poppler_certificate_info_get_id@Base 23.08.0
+ poppler_certificate_info_get_issuance_time@Base 23.08.0
+ poppler_certificate_info_get_issuer_common_name@Base 23.08.0
+ poppler_certificate_info_get_issuer_email@Base 23.08.0
+ poppler_certificate_info_get_issuer_organization@Base 23.08.0
+ poppler_certificate_info_get_subject_common_name@Base 23.08.0
+ poppler_certificate_info_get_subject_email@Base 23.08.0
+ poppler_certificate_info_get_subject_organization@Base 23.08.0
+ poppler_certificate_info_get_type@Base 23.08.0
  poppler_certificate_status_get_type@Base 22.02.0
  poppler_color_copy@Base 0.18.0
  poppler_color_free@Base 0.18.0
@@ -166,6 +184,8 @@ libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
  poppler_document_set_producer@Base 0.46.0
  poppler_document_set_subject@Base 0.46.0
  poppler_document_set_title@Base 0.46.0
+ poppler_document_sign@Base 23.08.0
+ poppler_document_sign_finish@Base 23.08.0
  poppler_error_get_type@Base 0.18.0
  poppler_error_quark@Base 0.18.0
  poppler_find_flags_get_type@Base 0.22.1
@@ -232,7 +252,10 @@ libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
  poppler_form_field_text_set_text@Base 0.18.0
  poppler_form_field_type_get_type@Base 0.18.0
  poppler_form_text_type_get_type@Base 0.18.0
+ poppler_get_available_signing_certificates@Base 23.08.0
  poppler_get_backend@Base 0.18.0
+ poppler_get_certificate_info_by_id@Base 23.08.0
+ poppler_get_nss_dir@Base 23.08.0
  poppler_get_version@Base 0.18.0
  poppler_image_mapping_copy@Base 0.18.0
  poppler_image_mapping_free@Base 0.18.0
@@ -366,8 +389,11 @@ libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
  poppler_rectangle_get_type@Base 0.18.0
  poppler_rectangle_new@Base 0.18.0
  poppler_selection_style_get_type@Base 0.18.0
+ poppler_set_nss_dir@Base 23.08.0
+ poppler_set_nss_password_callback@Base 23.08.0
  poppler_signature_info_copy@Base 22.02.0
  poppler_signature_info_free@Base 22.02.0
+ poppler_signature_info_get_certificate_info@Base 23.08.0
  poppler_signature_info_get_certificate_status@Base 22.02.0
  poppler_signature_info_get_local_signing_time@Base 22.02.0
  poppler_signature_info_get_signature_status@Base 22.02.0
@@ -375,6 +401,48 @@ libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
  poppler_signature_info_get_type@Base 22.02.0
  poppler_signature_status_get_type@Base 22.02.0
  poppler_signature_validation_flags_get_type@Base 22.02.0
+ poppler_signing_data_copy@Base 23.08.0
+ poppler_signing_data_free@Base 23.08.0
+ poppler_signing_data_get_background_color@Base 23.08.0
+ poppler_signing_data_get_border_color@Base 23.08.0
+ poppler_signing_data_get_border_width@Base 23.08.0
+ poppler_signing_data_get_certificate_info@Base 23.08.0
+ poppler_signing_data_get_destination_filename@Base 23.08.0
+ poppler_signing_data_get_document_owner_password@Base 23.08.0
+ poppler_signing_data_get_document_user_password@Base 23.08.0
+ poppler_signing_data_get_field_partial_name@Base 23.08.0
+ poppler_signing_data_get_font_color@Base 23.08.0
+ poppler_signing_data_get_font_size@Base 23.08.0
+ poppler_signing_data_get_image_path@Base 23.08.0
+ poppler_signing_data_get_left_font_size@Base 23.08.0
+ poppler_signing_data_get_location@Base 23.08.0
+ poppler_signing_data_get_page@Base 23.08.0
+ poppler_signing_data_get_password@Base 23.08.0
+ poppler_signing_data_get_reason@Base 23.08.0
+ poppler_signing_data_get_signature_rectangle@Base 23.08.0
+ poppler_signing_data_get_signature_text@Base 23.08.0
+ poppler_signing_data_get_signature_text_left@Base 23.08.0
+ poppler_signing_data_get_type@Base 23.08.0
+ poppler_signing_data_new@Base 23.08.0
+ poppler_signing_data_set_background_color@Base 23.08.0
+ poppler_signing_data_set_border_color@Base 23.08.0
+ poppler_signing_data_set_border_width@Base 23.08.0
+ poppler_signing_data_set_certificate_info@Base 23.08.0
+ poppler_signing_data_set_destination_filename@Base 23.08.0
+ poppler_signing_data_set_document_owner_password@Base 23.08.0
+ poppler_signing_data_set_document_user_password@Base 23.08.0
+ poppler_signing_data_set_field_partial_name@Base 23.08.0
+ poppler_signing_data_set_font_color@Base 23.08.0
+ poppler_signing_data_set_font_size@Base 23.08.0
+ poppler_signing_data_set_image_path@Base 23.08.0
+ poppler_signing_data_set_left_font_size@Base 23.08.0
+ poppler_signing_data_set_location@Base 23.08.0
+ poppler_signing_data_set_page@Base 23.08.0
+ poppler_signing_data_set_password@Base 23.08.0
+ poppler_signing_data_set_reason@Base 23.08.0
+ poppler_signing_data_set_signature_rectangle@Base 23.08.0
+ poppler_signing_data_set_signature_text@Base 23.08.0
+ poppler_signing_data_set_signature_text_left@Base 23.08.0
  poppler_structure_block_align_get_type@Base 0.26.0
  poppler_structure_border_style_get_type@Base 0.26.0
  poppler_structure_element_get_abbreviation@Base 0.26.0

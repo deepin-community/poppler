@@ -8,6 +8,7 @@
 // Copyright 2018, 2019, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
+// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -16,32 +17,7 @@
 #include <cstring>
 #include <cstdlib>
 
-X509CertificateInfo::PublicKeyInfo::PublicKeyInfo() : publicKeyType(OTHERKEY), publicKeyStrength(0) { }
-
-X509CertificateInfo::PublicKeyInfo::PublicKeyInfo(X509CertificateInfo::PublicKeyInfo &&other) noexcept
-{
-    publicKey = std::move(other.publicKey);
-    publicKeyType = other.publicKeyType;
-    publicKeyStrength = other.publicKeyStrength;
-}
-
-X509CertificateInfo::PublicKeyInfo &X509CertificateInfo::PublicKeyInfo::operator=(X509CertificateInfo::PublicKeyInfo &&other) noexcept
-{
-    publicKey = std::move(other.publicKey);
-    publicKeyType = other.publicKeyType;
-    publicKeyStrength = other.publicKeyStrength;
-    return *this;
-}
-
-X509CertificateInfo::EntityInfo::EntityInfo() = default;
-
-X509CertificateInfo::EntityInfo::~EntityInfo() = default;
-
-X509CertificateInfo::EntityInfo::EntityInfo(X509CertificateInfo::EntityInfo &&other) noexcept = default;
-
-X509CertificateInfo::EntityInfo &X509CertificateInfo::EntityInfo::operator=(X509CertificateInfo::EntityInfo &&other) noexcept = default;
-
-X509CertificateInfo::X509CertificateInfo() : ku_extensions(KU_NONE), cert_version(-1), is_self_signed(false) { }
+X509CertificateInfo::X509CertificateInfo() : ku_extensions(KU_NONE), cert_version(-1), is_self_signed(false), keyLocation(KeyLocation::Unknown) { }
 
 X509CertificateInfo::~X509CertificateInfo() = default;
 
@@ -143,4 +119,13 @@ void X509CertificateInfo::setCertificateDER(const GooString &certDer)
 void X509CertificateInfo::setIsSelfSigned(bool isSelfSigned)
 {
     is_self_signed = isSelfSigned;
+}
+KeyLocation X509CertificateInfo::getKeyLocation() const
+{
+    return keyLocation;
+}
+
+void X509CertificateInfo::setKeyLocation(KeyLocation location)
+{
+    keyLocation = location;
 }

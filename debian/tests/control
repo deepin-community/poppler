@@ -6,3 +6,7 @@ Depends: build-essential, pkg-config, libpoppler-glib-dev, cups-filters:native
 
 Tests: qt5
 Depends: build-essential, pkg-config, libpoppler-qt5-dev, cups-filters:native
+
+Tests: qt6
+Architecture: amd64 arm64 armel armhf loong64 mips64el ppc64el riscv64 s390x alpha hppa hurd-any m68k powerpc ppc64 sh4 sparc64
+Depends: build-essential, pkg-config, libpoppler-qt6-dev, cups-filters:native

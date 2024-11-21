@@ -7,7 +7,7 @@
 // Pino Toscano <pino@kde.org> (c) 2008
 // Carlos Garcia Campos <carlosgc@gnome.org> (c) 2010
 // Tobias Koenig <tobias.koenig@kdab.com> (c) 2012
-// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018
+// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2024
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -197,9 +197,9 @@ void MediaParameters::parseMediaPlayParameters(Object *obj)
         Object oname = tmp.dictLookup("S");
         if (oname.isName()) {
             const char *name = oname.getName();
-            if (!strcmp(name, "F"))
+            if (!strcmp(name, "F")) {
                 duration = -1; // infinity
-            else if (!strcmp(name, "T")) {
+            } else if (!strcmp(name, "T")) {
                 Object ddict = tmp.dictLookup("T");
                 if (ddict.isDict()) {
                     Object tmp2 = ddict.dictLookup("V");
@@ -332,8 +332,9 @@ MediaRendition::MediaRendition(Object *obj)
         }
     }
 
-    if (!ok)
+    if (!ok) {
         return;
+    }
 
     //
     // parse Media Play Parameters
@@ -375,36 +376,40 @@ MediaRendition::MediaRendition(const MediaRendition &other)
     isEmbedded = other.isEmbedded;
     embeddedStreamObject = other.embeddedStreamObject.copy();
 
-    if (other.contentType)
+    if (other.contentType) {
         contentType = other.contentType->copy();
-    else
+    } else {
         contentType = nullptr;
+    }
 
-    if (other.fileName)
+    if (other.fileName) {
         fileName = other.fileName->copy();
-    else
+    } else {
         fileName = nullptr;
+    }
 }
 
 void MediaRendition::outputToFile(FILE *fp)
 {
-    if (!isEmbedded)
+    if (!isEmbedded) {
         return;
+    }
 
     embeddedStreamObject.streamReset();
 
     while (true) {
         int c = embeddedStreamObject.streamGetChar();
-        if (c == EOF)
+        if (c == EOF) {
             break;
+        }
 
         fwrite(&c, 1, 1, fp);
     }
 }
 
-MediaRendition *MediaRendition::copy() const
+std::unique_ptr<MediaRendition> MediaRendition::copy() const
 {
-    return new MediaRendition(*this);
+    return std::make_unique<MediaRendition>(*this);
 }
 
 // TODO: SelectorRendition

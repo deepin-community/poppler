@@ -1,3 +1,436 @@
+Release 24.08.0:
+        core:
+         * Add support for modifying the appearance stream text in form field choice
+         * Fix buffer overflow in Windows specific font selection code
+         * Fix crashes in malformed files
+         * Internal code improvements
+
+        qt5:
+         * Add support for modifying the appearance stream text in form field choice
+
+        qt6:
+         * Add support for modifying the appearance stream text in form field choice
+
+        utils:
+         * pdfinfo: Fix crash in malformed documents
+
+Release 24.07.0:
+        core:
+         * Fix crashes in broken files
+         * Internal code improvements
+
+        qt6:
+         * Add getters for document additional actions
+         * Implement reset forms link
+
+        qt5:
+         * Add getters for document additional actions
+         * Implement reset forms link
+
+        utils:
+         * pdfinfo: Fix crash in broken documents when using -dests
+
+        build system:
+         * Mark glib-mkenums as required
+
+Release 24.06.0:
+        core:
+         * Performance improvements in some files
+         * Fix some issues with files bigger than 2^31 bytes
+         * Remove all cairo include guards for cairo < 1.16
+         * Fix MSVC build
+         * Internal code improvements
+
+        qt6:
+         * Update Qt6 doc example
+         * Use the non deprecated version of QString::fromUcs4
+
+        glib:
+         * properly document return value from poppler_font_info_scan
+
+Release 24.05.0:
+        core:
+         * Fix signing not being totally correct in some kind of PDF files
+         * Assume "Adobe-Identity" for character collection. Issue #1465
+         * Small improvements in annotation font rendering
+         * Remove some GooString methods, use std::string ones instead
+         * Move some GooString methods to UTF.h
+         * Fix crash in broken files
+
+        cpp:
+         * cpp: Fix crash extracting text and font in some files. Issue #1477
+         * Change base class of ustring to char16_t
+
+        qt6:
+         * Add async API for certificate validation
+         * Fix text extraction for Landscape/Seascape pages
+
+        qt5:
+         * Add async API for certificate validation
+         * Fix text extraction for Landscape/Seascape pages
+
+        utils:
+         * pdfdetach: Small code improvements
+         * pdftops: Write compliant ps header
+
+        build system:
+         * Increase minimum supported base to that provided by Ubuntu 22.04
+
+Release 24.04.0:
+        core:
+         * Optimize page text extraction speed
+         * Fix clipping path handling in some files. Issue #739
+         * Fix regression in text selection
+         * Fix text search across lines between paragraphs
+
+        qt6:
+         * Fix crash in SoundObject::data
+
+        utils:
+         * pdfsig: Add Catalan translation
+
+        build system:
+         * Build code as C++20
+
+Release 24.03.0:
+        core:
+         * Fix opening some malformed files. Issue #1447
+         * Skip drawing image when it has singular matrix. Issue #1114
+         * Fix crash on malformed files
+         * Small internal code cleanup
+
+        utils:
+         * pdfdetach: Fix potential directory traversal
+         * pdfimages: Enable to print filenames to stdout.
+         * pdfsig: Add visible name/date when signing an existing form signature field
+
+Release 24.02.0:
+        core:
+         * Fix reading some JBIG2 streams. Issue #1319
+         * Fix saving some annotation interior color when it's empty
+         * Make searching for fonts when adding annotations a bit faster
+         * Make sure images are compressed when adding them
+         * Small internal code cleanup
+
+        utils:
+         * pdfimages: return exit code 2 when error opening output files
+
+Release 24.01.0:
+        core:
+         * Don't crash on certain documents on the NSS signature backend
+         * Fix infinite loop in some annotation code if there's not space for even one character
+         * Fix build on Android with generic font configuration
+         * Small internal code cleanup
+
+Release 23.12.0:
+        core:
+         * Rewrite FoFiType1::parse to be more flexible. Issue #1422
+         * Small internal code refactoring
+
+Release 23.11.0:
+        core:
+         * CairoOutputDev: Use internal downscaling algorithm if image exceeds Cairo's maximum dimensions.
+         * Internal code improvements
+         * Fix crash on malformed files
+
+        utils:
+         * pdftocairo: Add option to document logical structure if output is pdf
+         * pdftocairo: EPS output should not contain %%PageOrientation
+
+Release 23.10.0:
+        core:
+         * cairo: update type 3 fonts for cairo 1.18 api
+         * Fix crash on malformed files
+
+        build system:
+         * Make a few more dependencies soft-mandatory
+         * Add more supported gnupg releases
+         * Check if linker supports version scripts
+
+Release 23.09.0:
+        core:
+         * Add Android-specific font matching functionality
+         * Fix digital signatures for NeedAppearance=true
+         * Forms: Don't look up same glyph multiple times
+         * Provide the key location for certificates you can sign with
+         * Add ToUnicode support for similarequal
+         * Fix crash on malformed files
+
+        qt5:
+         * Provide the key location for certificates you can sign with
+         * Allow to force a rasterized overprint preview during PS conversion
+
+        qt6:
+         * Provide the key location for certificates you can sign with
+         * Allow to force a rasterized overprint preview during PS conversion
+
+        pdfsig:
+         * Provide the key location for certificates you can sign with
+
+Release 23.08.0:
+        core:
+         * Fix GWG 19.2 - DeviceN Overprint (White)
+         * Splash: avoid bogus memory allocation size in doTilingPatternFill
+         * Fix use-of-uninitialized-value in XRef
+         * Fix float-cast-overflow error in Catalog
+         * Cleanup gpgme backend code
+         * Version symbols in poppler core
+
+        glib:
+         * Improve poppler_get_available_signing_certificates
+         * Add new members to PopplerCertificateInfo
+
+        utils:
+         * pdftotext: small improvement to man page
+
+Release 23.07.0:
+        core:
+         * Fix reading of utf8-with-bom files
+         * Fix crash if CERT_ExtractPublicKey doesn't return a public key
+         * Fix rendering of some malformed documents. Issue #1395
+         * Allow for stream compression and compress font streams in forms
+         * Remove method Hints::getPageRanges
+
+        qt5:
+         * Fix crash when overprint preview is enabled
+         * Don't fail signature basics tests if backend is not configured
+
+        qt6:
+         * Fix crash when overprint preview is enabled
+         * Don't fail signature basics tests if backend is not configured
+
+        utils:
+         * pdfsig: Allow showung and selecting signature backend
+         * pdfsig: Describe signature dump format in manual page
+
+        glib:
+         * Add signing API
+
+        build system:
+         * zlib is now mandatory
+
+Release 23.06.0:
+        core:
+         * CairoOutputDev: Fix crash when doing type3 rendering
+         * Fix crash with unknown signature hashing algorithms
+         * Add gpgme backend for signature handling
+         * Windows: Fix crash when signing existing signature
+         * FontInfo: Make it return proper information about font substitution
+         * FontInfo: Try harder to get Type 3 font name
+         * Store embedded fonts widths table in a more effective manner
+         * Skip font lookup for nonprintable characters
+         * Windows: Look for fonts in both windows font dir and poppler fonts dir
+         * Windows: symbol.ttf is not a good Symbol font
+         * Windows: Fix memory leak when looking for fonts
+         * Fix crash on malformed files
+
+        qt5:
+         * Add API to allow selecting signature backend (nss or gpgme)
+         * Convert embedded files to bytearray a bit smarter
+
+        qt6:
+         * Add API to allow selecting signature backend (nss or gpgme)
+         * Convert embedded files to bytearray a bit smarter
+
+Release 23.05.0:
+        core:
+         * Fix crash when filling some forms
+         * Set SigFlags when signing unsigned signature
+         * Add some infrastructure code to support multiple signing backends
+         * Fix potential stack overflow in PostScriptFunction::parseCode
+         * Fix some minor uninitialised memory reads
+
+Release 23.04.0:
+        core:
+         * Fix memory issue when signing fails. Issue #1372
+         * Internal improvements of signature related code
+         * CairoOutputDev: improve type3 font rendering
+         * Fix memory leak in GlobalParams::findSystemFontFileForFamilyAndStyle
+
+        utils:
+         * pdftocairo: Fix crash in some special situations
+         * pdfsig: allow holes in -dump signature list
+         * pdfsig: Support --help
+
+Release 23.03.0:
+        core:
+         * PngWriter: Fix potential uninitialized memory use
+
+Release 23.02.0:
+        core:
+         * CairoOutputDev: Fix rendering of color type 3 fonts
+         * CairoOutputDev: Add handling matte entry
+         * Fix segfault on wrong nssdir
+         * Fix "NSS could not shutdown"
+
+        utils:
+         * pdfsig: Point out supports PKCS#11 URIs as nickname
+
+Release 23.01.0:
+        core:
+         * PDFDoc::sign: Fix crash if font can't be found
+         * PDFDoc::sign: Try Arial to sign if Helvetica isn't found
+         * FoFiType1::parse: Be more flexible parsing the encoding content. Issue #1324
+         * Gfx::opBeginMarkedContent: Support Span with Name. Issue #1327
+         * Splash: Avoid color issues due to implicit rounding
+         * Splash: Fix crash on malformed file.
+         * CairoOutputDev: Ignore text rendering mode for type3 fonts
+         * Remove unused FoFiType1::load function
+
+        build system:
+         * Increase minimum required versions of several dependencies
+         * Improve include path handling
+
+        qt6:
+         * Use less deprecated functions
+
+Release 22.12.0:
+        core:
+         * Form::addFontToDefaultResources: Be stubborn in finding a font we can use. Issue #1272
+
+Release 22.11.0:
+        core:
+         * CairoOutputDev: Update font after restore
+         * Protect against broken files
+         * Small code refactoring
+
+Release 22.10.0:
+        core:
+         * SplashOutputDev::tilingPatternFill: Properly restore CTM on failure. Issue #1292
+         * Protect against malformed files
+         * Refactor code to not use strndup
+         * Other small code refactoring
+
+        utils:
+         * pdftoppm: Avoid round-off errors when determining raster dimensions
+         * pdftocairo: Avoid round-off errors when determining raster dimensions
+         * pdftotext: Simplify memory handling
+
+        qt:
+         * Take into account flagNoView when getting/setting the visible status. KDE bug #456313
+
+        build system:
+         * Fix sed invocation
+
+Release 22.09.0:
+        core:
+         * Splash: Do not truncate line dash patterns with more than 20 entries. Issue #1281
+         * Various signature related improvements
+         * Fix FormField::getFullyQualifiedName in some scenarios
+         * Splash: Small optimization on dash pattern handling
+         * JBIG2Stream::readHalftoneRegionSeg: Fix potential memory leak
+         * Fix crashes on malformed files. Including CVE-2022-38784
+         * Fix string formatting in error reporting
+
+        glib:
+         * Fix two potential memory leaks in poppler_document_create_dests_tree
+
+        utils:
+         * pdfsig: List signature field names when listing signature information
+         * pdfsig: Add support for specifying signature by field name
+         * pdfunite: Fix crashes on malformed files
+         * pdfunite: Fix potential memory leak of docs
+
+Release 22.08.0:
+        core:
+         * Fix rendering text on some forms
+         * CairoOutputDev: Support Type3 charprocs having Resources
+         * Fix crashes on malformed files
+
+Release 22.07.0:
+        core:
+         * Fix crash when filling in forms in some files. Issue #1258
+         * Fix first lines of Annotations sometimes being cut off. Issue #1246
+         * Signatures: Don't crash if the signature doesn't have a common name
+         * CairoFontEngine: increment font_face reference when retrieving from the cache
+         * Add ToUnicode support for lessorequalslant and greaterorequalslant
+
+        glib:
+         * Add support for stamp annotation
+
+        build system:
+         * Tweaks on how gperf is run
+
+Release 22.06.0:
+        core:
+         * Forms: Fix crash in forms with their own DR
+         * Refactor CairoFontEngine caching
+         * CairoOutputDev: preserve text color when drawing type 3 glyphs
+         * Windows: font code simplification
+         * Minor code improvements
+
+        cpp:
+         * Add missing header
+
+        utils:
+         * pdfattach: Assume filename is utf8 encoded
+         * pdftohtml: Fix type 3 font size calculation
+
+Release 22.05.0:
+        core:
+         * Annotations: Make sure we embed fonts for the FreeText annots
+         * Forms: Make sure we embedd fonts as needed
+         * Signatures: Make sure we embed the needed fonts
+         * CairoOutputDev: color type 3 fonts
+         * fix two bugs in multiline find_text()
+         * code improvements
+
+        utils:
+         * pdftotext: added TSV mode
+         * HtmlOutputDev: don't use png.h
+
+        cpp:
+         * Use time_t for time
+         * Add page_transition::durationReal
+
+        qt:
+         * Pass leftFontSize down to `FormWidgetSignature::signDocumentWithAppearence`
+
+Release 22.04.0:
+        core:
+         * Fix underline sometimes being drawn only partially
+         * Fix Adobe Reader not reading some of the contents we write correctly
+         * Fix code that workarounds some broken-ish files
+         * FoFiTrueType: Parse CFF2 fonts too
+         * FoFiTrueType: Support cmap types 2 and 13
+         * Fix a few small memory leaks
+         * code improvements
+
+        qt:
+         * Handle SaveAs named action
+         * Annotations: don't change the text color when changing the font
+
+        utils:
+         * pdftotext: print creation and modification date when using htmlmeta param
+
+        glib:
+         * Fix returning internal data of temporary strings
+
+        cpp:
+         * Fix code incompatibility with MSVC
+
+        build system:
+         * poppler internal library is no longer forced to static on MSVC
+         * Error out if iconv is not available and the cpp frontend is enabled
+         * Require FreeType 2.8
+
+Release 22.03.0:
+        core:
+         * Signature: Fix finding Signatures that are in Pages not not in the global the Forms object
+         * Signature: Improve getting the path to the firefox certificate database
+         * Splash: Fix rendering of some joints. Issue #1212
+         * Fix get_poppler_localdir for relocatable Windows builds
+         * Minor code improvements
+
+        qt:
+         * Minor code improvements
+
+        utils:
+         * pdfimages: Fix the wrong Stream being passed for drawMaskedImage
+
+        build system:
+         * Small code improvements
+
 Release 22.02.0:
         core:
          * Signature: Add a way to detect unsigned FormFieldSignature

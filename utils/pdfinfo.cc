@@ -15,7 +15,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Dom Lachowicz <cinamod@hotmail.com>
-// Copyright (C) 2007-2010, 2012, 2016-2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2010, 2012, 2016-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2011 Vittal Aithal <vittal.aithal@cognidox.com>
 // Copyright (C) 2012, 2013, 2016-2018, 2021 Adrian Johnson <ajohnson@redneon.com>
@@ -28,6 +28,7 @@
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2019-2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Thomas Fischer <fischer@unix-ag.uni-kl.de>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -112,16 +113,19 @@ static const ArgDesc argDesc[] = { { "-f", argInt, &firstPage, 0, "first page to
                                    { "-?", argFlag, &printHelp, 0, "print usage information" },
                                    {} };
 
-static void printTextString(const GooString *s, const UnicodeMap *uMap)
+static void printStdTextString(const std::string &s, const UnicodeMap *uMap)
 {
-    Unicode *u;
     char buf[8];
-    int len = TextStringToUCS4(s->toStr(), &u);
-    for (int i = 0; i < len; i++) {
-        int n = uMap->mapUnicode(u[i], buf, sizeof(buf));
+    const std::vector<Unicode> u = TextStringToUCS4(s);
+    for (const auto &c : u) {
+        int n = uMap->mapUnicode(c, buf, sizeof(buf));
         fwrite(buf, 1, n, stdout);
     }
-    gfree(u);
+}
+
+static void printTextString(const GooString *s, const UnicodeMap *uMap)
+{
+    printStdTextString(s->toStr(), uMap);
 }
 
 static void printUCS4String(const Unicode *u, int len, const UnicodeMap *uMap)
@@ -173,8 +177,9 @@ static void printInfoDate(Dict *infoDict, const char *key, const char *text, con
             time = timegm(&tmStruct);
             if (time != (time_t)-1) {
                 int offset = (tz_hour * 60 + tz_minute) * 60;
-                if (tz == '-')
+                if (tz == '-') {
                     offset *= -1;
+                }
                 time -= offset;
                 localtime_r(&time, &tmStruct);
                 strftime(buf, sizeof(buf), "%c %Z", &tmStruct);
@@ -204,8 +209,9 @@ static void printISODate(Dict *infoDict, const char *key, const char *text, cons
                 fprintf(stdout, "Z");
             } else {
                 fprintf(stdout, "%c%02d", tz, tz_hour);
-                if (tz_minute)
+                if (tz_minute) {
                     fprintf(stdout, ":%02d", tz_minute);
+                }
             }
         } else {
             printTextString(obj.getString(), uMap);
@@ -293,11 +299,6 @@ static void printStruct(const StructElement *element, unsigned indent)
     }
 }
 
-struct GooStringCompare
-{
-    bool operator()(GooString *lhs, GooString *rhs) const { return lhs->cmp(const_cast<GooString *>(rhs)) < 0; }
-};
-
 static void printLinkDest(const std::unique_ptr<LinkDest> &dest)
 {
     GooString s;
@@ -368,29 +369,25 @@ static void printLinkDest(const std::unique_ptr<LinkDest> &dest)
 
 static void printDestinations(PDFDoc *doc, const UnicodeMap *uMap)
 {
-    std::map<Ref, std::map<GooString *, std::unique_ptr<LinkDest>, GooStringCompare>> map;
+    std::map<Ref, std::map<std::string, std::unique_ptr<LinkDest>>> map;
 
     int numDests = doc->getCatalog()->numDestNameTree();
     for (int i = 0; i < numDests; i++) {
-        GooString *name = new GooString(doc->getCatalog()->getDestNameTreeName(i));
+        const GooString *name = doc->getCatalog()->getDestNameTreeName(i);
         std::unique_ptr<LinkDest> dest = doc->getCatalog()->getDestNameTreeDest(i);
-        if (dest && dest->isPageRef()) {
+        if (name && dest && dest->isPageRef()) {
             Ref pageRef = dest->getPageRef();
-            map[pageRef].insert(std::make_pair(name, std::move(dest)));
-        } else {
-            delete name;
+            map[pageRef].insert(std::make_pair(name->toStr(), std::move(dest)));
         }
     }
 
     numDests = doc->getCatalog()->numDests();
     for (int i = 0; i < numDests; i++) {
-        GooString *name = new GooString(doc->getCatalog()->getDestsName(i));
+        const char *name = doc->getCatalog()->getDestsName(i);
         std::unique_ptr<LinkDest> dest = doc->getCatalog()->getDestsDest(i);
-        if (dest && dest->isPageRef()) {
+        if (name && dest && dest->isPageRef()) {
             Ref pageRef = dest->getPageRef();
             map[pageRef].insert(std::make_pair(name, std::move(dest)));
-        } else {
-            delete name;
         }
     }
 
@@ -404,9 +401,8 @@ static void printDestinations(PDFDoc *doc, const UnicodeMap *uMap)
                     printf("%4d ", i);
                     printLinkDest(it.second);
                     printf(" \"");
-                    printTextString(it.first, uMap);
+                    printStdTextString(it.first, uMap);
                     printf("\"\n");
-                    delete it.first;
                 }
             }
         }
@@ -420,10 +416,9 @@ static void printUrlList(PDFDoc *doc)
         Page *page = doc->getPage(pg);
         if (page) {
             std::unique_ptr<Links> links = page->getLinks();
-            for (int i = 0; i < links->getNumLinks(); i++) {
-                AnnotLink *annot = links->getLink(i);
+            for (AnnotLink *annot : links->getLinks()) {
                 LinkAction *action = annot->getAction();
-                if (action->getKind() == actionURI) {
+                if (action && action->getKind() == actionURI) {
                     LinkURI *linkUri = dynamic_cast<LinkURI *>(action);
                     std::string uri = linkUri->getURI();
                     printf("%4d  Annotation    %s\n", pg, uri.c_str());
@@ -657,13 +652,15 @@ static void printPdfSubtype(PDFDoc *doc, const UnicodeMap *uMap)
 
         printf("    Title:         %s\n", typeExp->c_str());
         printf("    Abbreviation:  %s\n", abbr->c_str());
-        if (part.get())
+        if (part.get()) {
             printf("    Subtitle:      Part %d: %s\n", subpart, part->c_str());
-        else
+        } else {
             printf("    Subtitle:      Part %d\n", subpart);
+        }
         printf("    Standard:      %s-%d\n", typeExp->toStr().substr(0, 9).c_str(), subpart);
-        if (confExp.get())
+        if (confExp.get()) {
             printf("    Conformance:   %s\n", confExp->c_str());
+        }
     }
 }
 
@@ -917,7 +914,7 @@ int main(int argc, char *argv[])
 {
     std::unique_ptr<PDFDoc> doc;
     GooString *fileName;
-    GooString *ownerPW, *userPW;
+    std::optional<GooString> ownerPW, userPW;
     const UnicodeMap *uMap;
     FILE *f;
     bool ok;
@@ -936,13 +933,15 @@ int main(int argc, char *argv[])
         if (!printVersion) {
             printUsage("pdfinfo", "<PDF-file>", argDesc);
         }
-        if (printVersion || printHelp)
+        if (printVersion || printHelp) {
             exitCode = 0;
+        }
         goto err0;
     }
 
-    if (printStructureText)
+    if (printStructureText) {
         printStructure = true;
+    }
 
     // read config file
     globalParams = std::make_unique<GlobalParams>();
@@ -968,14 +967,10 @@ int main(int argc, char *argv[])
 
     // open PDF file
     if (ownerPassword[0] != '\001') {
-        ownerPW = new GooString(ownerPassword);
-    } else {
-        ownerPW = nullptr;
+        ownerPW = GooString(ownerPassword);
     }
     if (userPassword[0] != '\001') {
-        userPW = new GooString(userPassword);
-    } else {
-        userPW = nullptr;
+        userPW = GooString(userPassword);
     }
 
     if (fileName->cmp("-") == 0) {
@@ -985,12 +980,6 @@ int main(int argc, char *argv[])
 
     doc = PDFDocFactory().createPDFDoc(*fileName, ownerPW, userPW);
 
-    if (userPW) {
-        delete userPW;
-    }
-    if (ownerPW) {
-        delete ownerPW;
-    }
     if (!doc->isOk()) {
         exitCode = 1;
         goto err2;
@@ -1049,8 +1038,9 @@ int main(int argc, char *argv[])
             fclose(f);
         }
 
-        if (multiPage == false)
+        if (multiPage == false) {
             lastPage = 1;
+        }
 
         printInfo(doc.get(), uMap, filesize, multiPage);
     }

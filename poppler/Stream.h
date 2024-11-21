@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2008 Julien Rebetez <julien@fhtagn.net>
-// Copyright (C) 2008, 2010, 2011, 2016-2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2011, 2016-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Stefan Thomas <thomas@eload24.com>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
@@ -28,11 +28,13 @@
 // Copyright (C) 2013 Pino Toscano <pino@kde.org>
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 // Copyright (C) 2019 Alexander Volkov <a.volkov@rusbitech.ru>
-// Copyright (C) 2020, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2020-2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -44,6 +46,8 @@
 
 #include <atomic>
 #include <cstdio>
+#include <vector>
+#include <span>
 
 #include "poppler-config.h"
 #include "poppler_private_export.h"
@@ -97,7 +101,7 @@ enum CryptAlgorithm
 
 typedef struct _ByteRange
 {
-    unsigned int offset;
+    size_t offset;
     unsigned int length;
 } ByteRange;
 
@@ -133,10 +137,11 @@ public:
         } else {
             for (int i = 0; i < nChars; ++i) {
                 const int c = getChar();
-                if (likely(c != EOF))
+                if (likely(c != EOF)) {
                     buffer[i] = c;
-                else
+                } else {
                     return i;
+                }
             }
             return nChars;
         }
@@ -154,22 +159,30 @@ public:
 
     inline void fillGooString(GooString *s) { fillString(s->toNonConstStr()); }
 
-    inline unsigned char *toUnsignedChars(int *length, int initialSize = 4096, int sizeIncrement = 4096)
+    inline std::vector<unsigned char> toUnsignedChars(int initialSize = 4096, int sizeIncrement = 4096)
     {
+        std::vector<unsigned char> buf(initialSize);
+
         int readChars;
-        unsigned char *buf = (unsigned char *)gmalloc(initialSize);
         int size = initialSize;
-        *length = 0;
+        int length = 0;
         int charsToRead = initialSize;
         bool continueReading = true;
         reset();
-        while (continueReading && (readChars = doGetChars(charsToRead, &buf[*length])) != 0) {
-            *length += readChars;
+        while (continueReading && (readChars = doGetChars(charsToRead, buf.data() + length)) != 0) {
+            length += readChars;
             if (readChars == charsToRead) {
                 if (lookChar() != EOF) {
-                    size += sizeIncrement;
+                    if (unlikely(checkedAdd(size, sizeIncrement, &size))) {
+                        error(errInternal, -1, "toUnsignedChars size grew too much");
+                        return {};
+                    }
                     charsToRead = sizeIncrement;
-                    buf = (unsigned char *)grealloc(buf, size);
+                    if (unlikely(static_cast<size_t>(size) > buf.max_size())) {
+                        error(errInternal, -1, "toUnsignedChars size grew too much");
+                        return {};
+                    }
+                    buf.resize(size);
                 } else {
                     continueReading = false;
                 }
@@ -177,6 +190,8 @@ public:
                 continueReading = false;
             }
         }
+
+        buf.resize(length);
         return buf;
     }
 
@@ -289,6 +304,8 @@ public:
     // Put a char in the stream
     virtual void put(char c) = 0;
 
+    virtual size_t write(std::span<unsigned char> data) = 0;
+
     virtual void printf(const char *format, ...) GCC_PRINTF_FORMAT(2, 3) = 0;
 };
 
@@ -308,6 +325,8 @@ public:
 
     void put(char c) override;
 
+    size_t write(std::span<unsigned char> data) override;
+
     void printf(const char *format, ...) override GCC_PRINTF_FORMAT(2, 3);
 
 private:
@@ -324,7 +343,6 @@ private:
 class POPPLER_PRIVATE_EXPORT BaseStream : public Stream
 {
 public:
-    // TODO Mirar si puedo hacer que dictA sea un puntero
     BaseStream(Object &&dictA, Goffset lengthA);
     ~BaseStream() override;
     virtual BaseStream *copy() = 0;
@@ -663,11 +681,11 @@ public:
 
     int lookChar() override { return (bufPtr < bufEnd) ? (*bufPtr & 0xff) : EOF; }
 
-    Goffset getPos() override { return (int)(bufPtr - buf); }
+    Goffset getPos() override { return bufPtr - buf; }
 
     void setPos(Goffset pos, int dir = 0) override
     {
-        unsigned int i;
+        Goffset i;
 
         if (dir >= 0) {
             i = pos;
@@ -1001,8 +1019,9 @@ private:
     short lookBits(int n);
     void eatBits(int n)
     {
-        if ((inputBits -= n) < 0)
+        if ((inputBits -= n) < 0) {
             inputBits = 0;
+        }
     }
 };
 
@@ -1166,8 +1185,9 @@ private:
         int c;
 
         while (remain == 0) {
-            if (endOfBlock && eof)
+            if (endOfBlock && eof) {
                 return EOF;
+            }
             readSome();
         }
         c = buf[index];
