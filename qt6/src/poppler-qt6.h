@@ -29,6 +29,8 @@
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
  * Copyright (C) 2022 Martin <martinbts@gmx.net>
+ * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -94,7 +96,7 @@ struct OutlineItemData;
     the first parameter is the actual message, the second is the unaltered
     closure argument which was passed to the setDebugErrorFunction call.
 */
-typedef void (*PopplerDebugFunc)(const QString & /*message*/, const QVariant & /*closure*/);
+using PopplerDebugFunc = void (*)(const QString & /*message*/, const QVariant & /*closure*/);
 
 /**
     Set a new debug/error output function.
@@ -519,7 +521,7 @@ public:
         the first parameter is the image as rendered up to now, the second is the unaltered
         closure argument which was passed to the renderToImage call.
     */
-    typedef void (*RenderToImagePartialUpdateFunc)(const QImage & /*image*/, const QVariant & /*closure*/);
+    using RenderToImagePartialUpdateFunc = void (*)(const QImage & /*image*/, const QVariant & /*closure*/);
 
     /**
         Partial Update query renderToImage callback.
@@ -527,7 +529,7 @@ public:
         This function type is used for query if the partial rendering update should happen;
         the parameter is the unaltered closure argument which was passed to the renderToImage call.
     */
-    typedef bool (*ShouldRenderToImagePartialQueryFunc)(const QVariant & /*closure*/);
+    using ShouldRenderToImagePartialQueryFunc = bool (*)(const QVariant & /*closure*/);
 
     /**
        Render the page to a QImage using the current
@@ -584,7 +586,7 @@ public:
 
         This function type is used for query if the current rendering/text extraction should be cancelled.
     */
-    typedef bool (*ShouldAbortQueryFunc)(const QVariant & /*closure*/);
+    using ShouldAbortQueryFunc = bool (*)(const QVariant & /*closure*/);
 
     /**
 Render the page to a QImage using the current
@@ -1672,12 +1674,44 @@ QString subject = m_doc->info("Subject");
     OptContentModel *optionalContentModel();
 
     /**
+       Resets the form with the details contained in the \p link.
+
+       \since 24.07
+    */
+    void applyResetFormsLink(const LinkResetForm &link);
+
+    /**
        Document-level JavaScript scripts.
 
        Returns the list of document level JavaScript scripts to be always
        executed before any other script.
     */
     QStringList scripts() const;
+
+    /**
+      Describes the flags for additional document actions i.e.
+      for executing document scripts at different events.
+      This flag is used by additionalAction method to return the
+      particular Link.
+
+      \since 24.07
+    */
+    enum DocumentAdditionalActionsType
+    {
+        CloseDocument, ///< Performed before closing the document
+        SaveDocumentStart, ///< Performed before saving the document
+        SaveDocumentFinish, ///< Performed after saving the document
+        PrintDocumentStart, ///< Performed before printing the document
+        PrintDocumentFinish, ///< Performed after printing the document
+    };
+
+    /**
+      Returns the additional action of the given @p type for the document or
+      @c 0 if no action has been defined.
+
+      \since 24.07
+    */
+    std::unique_ptr<Link> additionalAction(DocumentAdditionalActionsType type) const;
 
     /**
        The PDF identifiers.
@@ -1822,7 +1856,8 @@ public:
         StrictMargins = 0x00000002,
         ForceRasterization = 0x00000004,
         PrintToEPS = 0x00000008, ///< Output EPS instead of PS
-        HideAnnotations = 0x00000010 ///< Don't print annotations
+        HideAnnotations = 0x00000010, ///< Don't print annotations
+        ForceOverprintPreview = 0x00000020 ///< Force rasterized overprint preview during conversion \since 23.09
     };
     Q_DECLARE_FLAGS(PSOptions, PSOption)
 
@@ -1892,6 +1927,16 @@ public:
       Defaults to false.
     */
     void setStrictMargins(bool strictMargins);
+
+    /**
+      Defines if the page will be rasterized to an image with overprint
+      preview enabled before printing.
+
+      Defaults to false
+
+      \since 23.09
+    */
+    void setForceOverprintPreview(bool forceOverprintPreview);
 
     /** Defines if the page will be rasterized to an image before printing. Defaults to false */
     void setForceRasterize(bool forceRasterize);

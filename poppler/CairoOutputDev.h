@@ -18,7 +18,7 @@
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2005 Nickolay V. Shmyrev <nshmyrev@yandex.ru>
 // Copyright (C) 2006-2011, 2013 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2008, 2009, 2011-2017 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2008, 2009, 2011-2017, 2022-2024 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2008 Michael Vrable <mvrable@cs.ucsd.edu>
 // Copyright (C) 2010-2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2015 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
@@ -27,6 +27,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2020 Michal <sudolskym@gmail.com>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
+// Copyright (C) 2022 Marek Kasik <mkasik@redhat.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -36,10 +37,16 @@
 #ifndef CAIROOUTPUTDEV_H
 #define CAIROOUTPUTDEV_H
 
+#include <unordered_set>
+
 #include <cairo-ft.h>
 #include "OutputDev.h"
 #include "TextOutputDev.h"
 #include "GfxState.h"
+#include "StructElement.h"
+#include "StructTreeRoot.h"
+#include "Annot.h"
+#include "Link.h"
 
 class PDFDoc;
 class GfxState;
@@ -117,11 +124,7 @@ public:
     // Does this device use functionShadedFill(), axialShadedFill(), and
     // radialShadedFill()?  If this returns false, these shaded fills
     // will be reduced to a series of other drawing operations.
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
     bool useShadedFills(int type) override { return type <= 7; }
-#else
-    bool useShadedFills(int type) override { return type > 1 && type < 4; }
-#endif
 
     // Does this device use FillColorStop()?
     bool useFillColorStop() override { return true; }
@@ -141,6 +144,12 @@ public:
 
     // End a page.
     void endPage() override;
+
+    // Must be called before last call to endPage()
+    void emitStructTree();
+
+    void beginForm(Object *obj, Ref id) override;
+    void endForm(Object *obj, Ref id) override;
 
     //----- save/restore graphics state
     void saveState(GfxState *state) override;
@@ -172,17 +181,13 @@ public:
     void eoFill(GfxState *state) override;
     void clipToStrokePath(GfxState *state) override;
     bool tilingPatternFill(GfxState *state, Gfx *gfx, Catalog *cat, GfxTilingPattern *tPat, const double *mat, int x0, int y0, int x1, int y1, double xStep, double yStep) override;
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
     bool functionShadedFill(GfxState *state, GfxFunctionShading *shading) override;
-#endif
     bool axialShadedFill(GfxState *state, GfxAxialShading *shading, double tMin, double tMax) override;
     bool axialShadedSupportExtend(GfxState *state, GfxAxialShading *shading) override;
     bool radialShadedFill(GfxState *state, GfxRadialShading *shading, double sMin, double sMax) override;
     bool radialShadedSupportExtend(GfxState *state, GfxRadialShading *shading) override;
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
     bool gouraudTriangleShadedFill(GfxState *state, GfxGouraudTriangleShading *shading) override;
     bool patchMeshShadedFill(GfxState *state, GfxPatchMeshShading *shading) override;
-#endif
 
     //----- path clipping
     void clip(GfxState *state) override;
@@ -200,11 +205,13 @@ public:
     void beginTextObject(GfxState *state) override;
     void endTextObject(GfxState *state) override;
 
+    void beginMarkedContent(const char *name, Dict *properties) override;
+    void endMarkedContent(GfxState *state) override;
+
     //----- image drawing
     void drawImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool interpolate, bool inlineImg) override;
     void setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, double *baseMatrix) override;
     void unsetSoftMaskFromImageMask(GfxState *state, double *baseMatrix) override;
-    void drawImageMaskPrescaled(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool interpolate, bool inlineImg);
     void drawImageMaskRegular(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool interpolate, bool inlineImg);
 
     void drawImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, const int *maskColors, bool inlineImg) override;
@@ -230,6 +237,9 @@ public:
     // Called to indicate that a new PDF document has been loaded.
     void startDoc(PDFDoc *docA, CairoFontEngine *fontEngine = nullptr);
 
+    // Called to prepare this output dev for rendering CairoType3Font.
+    void startType3Render(GfxState *state, XRef *xref);
+
     bool isReverseVideo() { return false; }
 
     void setCairo(cairo_t *cr);
@@ -240,8 +250,15 @@ public:
         needFontUpdate = true;
     }
     void copyAntialias(cairo_t *cr, cairo_t *source_cr);
+    void setLogicalStructure(bool logStruct) { this->logicalStruct = logStruct; }
 
-    void setInType3Char(bool inType3CharA) { inType3Char = inType3CharA; }
+    enum Type3RenderType
+    {
+        Type3RenderNone,
+        Type3RenderMask,
+        Type3RenderColor
+    };
+    void setType3RenderType(Type3RenderType state) { t3_render_state = state; }
     void getType3GlyphWidth(double *wx, double *wy)
     {
         *wx = t3_glyph_wx;
@@ -249,6 +266,7 @@ public:
     }
     bool hasType3GlyphBBox() { return t3_glyph_has_bbox; }
     double *getType3GlyphBBox() { return t3_glyph_bbox; }
+    bool type3GlyphHasColor() { return t3_glyph_has_color; }
 
 protected:
     void doPath(cairo_t *cairo, GfxState *state, const GfxPath *path);
@@ -259,21 +277,30 @@ protected:
     void setMimeData(GfxState *state, Stream *str, Object *ref, GfxImageColorMap *colorMap, cairo_surface_t *image, int height);
     void fillToStrokePathClip(GfxState *state);
     void alignStrokeCoords(const GfxSubpath *subpath, int i, double *x, double *y);
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
+    AnnotLink *findLinkObject(const StructElement *elem);
+    void quadToCairoRect(AnnotQuadrilaterals *quads, int idx, double destPageHeight, cairo_rectangle_t *rect);
+    bool appendLinkDestRef(GooString *s, const LinkDest *dest);
+    void appendLinkDestXY(GooString *s, const LinkDest *dest, double destPageHeight);
+    bool beginLinkTag(AnnotLink *annotLink);
+    bool beginLink(const StructElement *linkElem);
+    void getStructElemAttributeString(const StructElement *elem);
+    int getContentElementStructParents(const StructElement *element);
+    bool checkIfStructElementNeeded(const StructElement *element);
+    void emitStructElement(const StructElement *elem);
+    void startFirstPage(int pageNum, GfxState *state, XRef *xrefA);
     bool setMimeDataForJBIG2Globals(Stream *str, cairo_surface_t *image);
-#endif
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 15, 10)
     bool setMimeDataForCCITTParams(Stream *str, cairo_surface_t *image, int height);
-#endif
+    static void textStringToQuotedUtf8(const GooString *text, GooString *s);
+    bool isPDF();
 
-    GfxRGB fill_color, stroke_color;
+    std::optional<GfxRGB> fill_color, stroke_color;
     cairo_pattern_t *fill_pattern, *stroke_pattern;
     double fill_opacity;
     double stroke_opacity;
     bool stroke_adjust;
     bool adjusted_stroke_width;
     bool align_stroke_coords;
-    CairoFont *currentFont;
+    std::shared_ptr<CairoFont> currentFont;
     XRef *xref;
 
     struct StrokePathClip
@@ -288,7 +315,7 @@ protected:
         cairo_line_join_t join;
         double miter;
         int ref_count;
-    } * strokePathClip;
+    } *strokePathClip;
 
     PDFDoc *doc; // the current document
 
@@ -313,11 +340,20 @@ protected:
     int utf8Max;
     cairo_path_t *textClipPath;
     bool inUncoloredPattern; // inside a uncolored pattern (PaintType = 2)
-    bool inType3Char; // inside a Type 3 CharProc
+    Type3RenderType t3_render_state;
     double t3_glyph_wx, t3_glyph_wy;
     bool t3_glyph_has_bbox;
+    bool t3_glyph_has_color;
+    bool has_color;
     double t3_glyph_bbox[4];
-    bool prescaleImages;
+    bool logicalStruct;
+    bool firstPage;
+    int pdfPageNum; // page number of the PDF file
+    int cairoPageNum; // page number in cairo output
+    std::vector<std::string> markedContentStack;
+    std::vector<Annot *> annotations;
+    std::set<std::string> emittedDestinations;
+    std::map<int, int> pdfPageToCairoPageMap;
 
     TextPage *textPage; // text for the current page
     ActualText *actualText;
@@ -334,14 +370,33 @@ protected:
         GfxColorSpace *cs;
         cairo_matrix_t group_matrix;
         struct ColorSpaceStack *next;
-    } * groupColorSpaceStack;
+    } *groupColorSpaceStack;
 
-    struct MaskStack
+    struct SaveStateElement
     {
-        cairo_pattern_t *mask;
+        // These patterns hold a reference
+        cairo_pattern_t *fill_pattern;
+        cairo_pattern_t *stroke_pattern;
+        double fill_opacity;
+        double stroke_opacity;
+        cairo_pattern_t *mask; // can be null
         cairo_matrix_t mask_matrix;
-        struct MaskStack *next;
-    } * maskStack;
+        Ref fontRef;
+    };
+    std::vector<SaveStateElement> saveStateStack;
+
+    std::map<Ref, std::map<std::string, std::unique_ptr<LinkDest>>> destsMap;
+    std::map<Ref, int> pdfPageRefToCairoPageNumMap;
+    std::vector<int> structParentsStack;
+    int currentStructParents;
+
+    struct StructParentsMcidHash
+    {
+        size_t operator()(std::pair<int, int> x) const { return x.first << 16 | x.second; }
+    };
+    std::unordered_set<std::pair<int, int>, StructParentsMcidHash> mcidEmitted; // <structParent, MCID>
+
+    std::unordered_set<const StructElement *> structElementNeeded;
 };
 
 //------------------------------------------------------------------------
@@ -375,11 +430,7 @@ public:
     // Does this device use functionShadedFill(), axialShadedFill(), and
     // radialShadedFill()?  If this returns false, these shaded fills
     // will be reduced to a series of other drawing operations.
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 11, 2)
     bool useShadedFills(int type) override { return type <= 7; }
-#else
-    bool useShadedFills(int type) override { return type < 4; }
-#endif
 
     // Does this device use FillColorStop()?
     bool useFillColorStop() override { return false; }

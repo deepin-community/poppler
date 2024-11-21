@@ -18,7 +18,7 @@ add_definitions(
 
 configure_file(poppler-features.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/poppler-features.h @ONLY)
 
-if (GTK_FOUND AND BUILD_GTK_TESTS)
+if (GTK_FOUND AND BUILD_GTK_TESTS AND NOT MSVC)
   add_subdirectory(demo)
   add_subdirectory(tests)
 endif ()
@@ -38,8 +38,8 @@ set(poppler_glib_public_headers
   poppler-structure-element.h
 )
 
-find_program(GLIB2_MKENUMS glib-mkenums)
-find_program(GLIB2_MKENUMS_PYTHON python3)
+find_program(GLIB2_MKENUMS glib-mkenums REQUIRED)
+find_program(GLIB2_MKENUMS_PYTHON NAMES python3 python)
 
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/poppler-enums.h
@@ -90,16 +90,18 @@ set(poppler_glib_generated_SRCS
 )
 add_library(poppler-glib ${poppler_glib_SRCS} ${poppler_glib_generated_SRCS})
 generate_export_header(poppler-glib EXPORT_MACRO_NAME POPPLER_PUBLIC EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/poppler-macros.h")
-set_target_properties(poppler-glib PROPERTIES VERSION 8.23.0 SOVERSION 8)
+set_target_properties(poppler-glib PROPERTIES VERSION 8.26.0 SOVERSION 8)
 if(MINGW AND BUILD_SHARED_LIBS)
     get_target_property(POPPLER_GLIB_SOVERSION poppler-glib SOVERSION)
     set_target_properties(poppler-glib PROPERTIES SUFFIX "-${POPPLER_GLIB_SOVERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endif()
-target_link_libraries(poppler-glib poppler PkgConfig::GLIB2 ${CAIRO_LIBRARIES} ${FREETYPE_LIBRARIES})
-if(CMAKE_USE_PTHREADS_INIT)
-   target_link_libraries(poppler-glib Threads::Threads)
-endif()
+target_link_libraries(poppler-glib poppler PkgConfig::GLIB2 ${CAIRO_LIBRARIES} Freetype::Freetype)
+target_include_directories(poppler-glib SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
 install(TARGETS poppler-glib RUNTIME DESTINATION bin LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+if (ENABLE_NSS3)
+    target_include_directories(poppler-glib SYSTEM PRIVATE ${NSS3_INCLUDE_DIRS})
+endif()
 
 install(FILES
   ${poppler_glib_public_headers}
@@ -152,3 +154,5 @@ endif ()
 if(ENABLE_GTK_DOC)
   add_subdirectory(reference)
 endif()
+
+check_function_exists(explicit_bzero HAVE_EXPLICIT_BZERO)

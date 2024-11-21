@@ -1,4 +1,4 @@
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include "PDFDoc.h"
 #include "GlobalParams.h"
@@ -88,9 +88,8 @@ void TestOptionalContent::checkNoOptionalContent()
 
 void TestOptionalContent::checkIsVisible()
 {
-    GooString *fileName = new GooString(TESTDATADIR "/unittestcases/vis_policy_test.pdf");
     globalParams = std::make_unique<GlobalParams>();
-    PDFDoc *doc = new PDFDoc(fileName);
+    PDFDoc *doc = new PDFDoc(std::make_unique<GooString>(TESTDATADIR "/unittestcases/vis_policy_test.pdf"));
     QVERIFY(doc);
 
     OCGs *ocgs = doc->getOptContentConfig();
@@ -162,8 +161,7 @@ void TestOptionalContent::checkIsVisible()
 void TestOptionalContent::checkVisibilitySetting()
 {
     globalParams = std::make_unique<GlobalParams>();
-    GooString *fileName = new GooString(TESTDATADIR "/unittestcases/vis_policy_test.pdf");
-    PDFDoc *doc = new PDFDoc(fileName);
+    PDFDoc *doc = new PDFDoc(std::make_unique<GooString>(TESTDATADIR "/unittestcases/vis_policy_test.pdf"));
     QVERIFY(doc);
 
     OCGs *ocgs = doc->getOptContentConfig();
@@ -175,7 +173,7 @@ void TestOptionalContent::checkVisibilitySetting()
 
     // In this test, both Ref(21,0) and Ref(28,0) start On,
     // based on the file settings
-    Object ref21obj({ 21, 0 });
+    Object ref21obj(Ref { 21, 0 });
     Ref ref21 = ref21obj.getRef();
     OptionalContentGroup *ocgA = ocgs->findOcgByRef(ref21);
     QVERIFY(ocgA);
@@ -183,7 +181,7 @@ void TestOptionalContent::checkVisibilitySetting()
     QVERIFY((ocgA->getName()->cmp("A")) == 0);
     QCOMPARE(ocgA->getState(), OptionalContentGroup::On);
 
-    Object ref28obj({ 28, 0 });
+    Object ref28obj(Ref { 28, 0 });
     Ref ref28 = ref28obj.getRef();
     OptionalContentGroup *ocgB = ocgs->findOcgByRef(ref28);
     QVERIFY(ocgB);

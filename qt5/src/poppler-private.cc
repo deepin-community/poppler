@@ -7,10 +7,12 @@
  * Copyright (C) 2016 Jakub Alba <jakubalba@gmail.com>
  * Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
  * Copyright (C) 2018-2020 Adam Reichold <adam.reichold@t-online.de>
- * Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2019, 2020, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2019 João Netto <joaonetto901@gmail.com>
  * Copyright (C) 2021 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
+ * Copyright (C) 2023 Shivodit Gill <shivodit.gill@gmail.com>
+ * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Inspired on code by
  * Copyright (C) 2004 by Albert Astals Cid <tsdgeos@terra.es>
  * Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
@@ -41,6 +43,16 @@
 #include <Outline.h>
 #include <PDFDocEncoding.h>
 #include <UnicodeMap.h>
+#include <UTF.h>
+
+#ifdef ANDROID
+#    include <QtCore/QString>
+#    include <QtCore/QDir>
+#    include <QtCore/QFile>
+#    include <QtCore/QFileInfo>
+#    include <QtCore/QStandardPaths>
+#    include <QtCore/QDirIterator>
+#endif
 
 namespace Poppler {
 
@@ -94,6 +106,11 @@ QString unicodeToQString(const Unicode *u, int len)
     return QString::fromUtf8(convertedStr.c_str(), convertedStr.getLength());
 }
 
+QString unicodeToQString(const std::vector<Unicode> &u)
+{
+    return unicodeToQString(u.data(), u.size());
+}
+
 QString UnicodeParsedString(const GooString *s1)
 {
     return (s1) ? UnicodeParsedString(s1->toStr()) : QString();
@@ -101,10 +118,11 @@ QString UnicodeParsedString(const GooString *s1)
 
 QString UnicodeParsedString(const std::string &s1)
 {
-    if (s1.empty())
+    if (s1.empty()) {
         return QString();
+    }
 
-    if (GooString::hasUnicodeMarker(s1) || GooString::hasUnicodeMarkerLE(s1)) {
+    if (hasUnicodeByteOrderMark(s1) || hasUnicodeByteOrderMarkLE(s1)) {
         return QString::fromUtf16(reinterpret_cast<const ushort *>(s1.c_str()), s1.size() / 2);
     } else {
         int stringLength;
@@ -137,8 +155,9 @@ GooString *QStringToGooString(const QString &s)
 {
     int len = s.length();
     char *cstring = (char *)gmallocn(s.length(), sizeof(char));
-    for (int i = 0; i < len; ++i)
+    for (int i = 0; i < len; ++i) {
         cstring[i] = s.at(i).unicode();
+    }
     GooString *ret = new GooString(cstring, len);
     gfree(cstring);
     return ret;
@@ -183,8 +202,9 @@ Annot::AdditionalActionsType toPopplerAdditionalActionType(Annotation::Additiona
 
 static void linkActionToTocItem(const ::LinkAction *a, DocumentData *doc, QDomElement *e)
 {
-    if (!a || !e)
+    if (!a || !e) {
         return;
+    }
 
     switch (a->getKind()) {
     case actionGoTo: {
@@ -197,8 +217,9 @@ static void linkActionToTocItem(const ::LinkAction *a, DocumentData *doc, QDomEl
             // so better storing the reference and provide the viewport on demand
             const GooString *s = g->getNamedDest();
             QChar *charArray = new QChar[s->getLength()];
-            for (int i = 0; i < s->getLength(); ++i)
+            for (int i = 0; i < s->getLength(); ++i) {
                 charArray[i] = QChar(s->c_str()[i]);
+            }
             QString aux(charArray, s->getLength());
             e->setAttribute(QStringLiteral("DestinationName"), aux);
             delete[] charArray;
@@ -218,8 +239,9 @@ static void linkActionToTocItem(const ::LinkAction *a, DocumentData *doc, QDomEl
             // so better storing the reference and provide the viewport on demand
             const GooString *s = g->getNamedDest();
             QChar *charArray = new QChar[s->getLength()];
-            for (int i = 0; i < s->getLength(); ++i)
+            for (int i = 0; i < s->getLength(); ++i) {
                 charArray[i] = QChar(s->c_str()[i]);
+            }
             QString aux(charArray, s->getLength());
             e->setAttribute(QStringLiteral("DestinationName"), aux);
             delete[] charArray;
@@ -253,6 +275,29 @@ void DocumentData::init()
     m_optContentModel = nullptr;
     xrefReconstructed = false;
     xrefReconstructedCallback = {};
+
+#ifdef ANDROID
+    // Copy fonts from android apk to the app's storage dir, and
+    // set the font directory path
+    QString assetsFontDir = QStringLiteral("assets:/share/fonts");
+    QString fontsdir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/fonts");
+    QDir fontPath = QDir(fontsdir);
+
+    if (fontPath.mkpath(fontPath.absolutePath())) {
+        GlobalParams::setFontDir(fontPath.absolutePath().toStdString());
+        QDirIterator iterator(assetsFontDir, QDir::NoFilter, QDirIterator::Subdirectories);
+
+        while (iterator.hasNext()) {
+            iterator.next();
+            QFileInfo fontFileInfo = iterator.fileInfo();
+            QString fontFilePath = assetsFontDir + QStringLiteral("/") + fontFileInfo.fileName();
+            QString destPath = fontPath.absolutePath() + QStringLiteral("/") + fontFileInfo.fileName();
+            QFile::copy(fontFilePath, destPath);
+        }
+    } else {
+        GlobalParams::setFontDir("");
+    }
+#endif
 }
 
 void DocumentData::addTocChildren(QDomDocument *docSyn, QDomNode *parent, const std::vector<::OutlineItem *> *items)
@@ -261,12 +306,7 @@ void DocumentData::addTocChildren(QDomDocument *docSyn, QDomNode *parent, const 
         // iterate over every object in 'items'
 
         // 1. create element using outlineItem's title as tagName
-        QString name;
-        const Unicode *uniChar = outlineItem->getTitle();
-        int titleLength = outlineItem->getTitleLength();
-        name = unicodeToQString(uniChar, titleLength);
-        if (name.isEmpty())
-            continue;
+        QString name = unicodeToQString(outlineItem->getTitle());
 
         QDomElement item = docSyn->createElement(name);
         parent->appendChild(item);
@@ -280,8 +320,9 @@ void DocumentData::addTocChildren(QDomDocument *docSyn, QDomNode *parent, const 
         // 3. recursively descend over children
         outlineItem->open();
         const std::vector<::OutlineItem *> *children = outlineItem->getKids();
-        if (children)
+        if (children) {
             addTocChildren(docSyn, &item, children);
+        }
     }
 }
 
@@ -305,5 +346,4 @@ FormFieldIconData *FormFieldIconData::getData(const FormFieldIcon &f)
 {
     return f.d_ptr;
 }
-
 }

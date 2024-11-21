@@ -8,7 +8,7 @@
 <link rel="up" href="ch01.html" title="Poppler">
 <link rel="prev" href="poppler-Poppler-Features.html" title="Version and Features Information">
 <link rel="next" href="api-index-full.html" title="Index of all symbols">
-<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<meta name="generator" content="GTK-Doc V1.34.0 (XML mode)">
 <link rel="stylesheet" href="style.css" type="text/css">
 </head>
 <body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
@@ -65,14 +65,14 @@
 </td>
 </tr>
 <tr>
-<td class="function_type">const <a href="../glib/glib-Basic-Types.html#gchar"><span class="returnvalue">gchar</span></a> *
+<td class="function_type">const <span class="returnvalue">gchar</span> *
 </td>
 <td class="function_name">
 <a class="link" href="poppler-Poppler-Text-Span.html#poppler-text-span-get-font-name" title="poppler_text_span_get_font_name ()">poppler_text_span_get_font_name</a> <span class="c_punctuation">()</span>
 </td>
 </tr>
 <tr>
-<td class="function_type">const <a href="../glib/glib-Basic-Types.html#gchar"><span class="returnvalue">gchar</span></a> *
+<td class="function_type">const <span class="returnvalue">gchar</span> *
 </td>
 <td class="function_name">
 <a class="link" href="poppler-Poppler-Text-Span.html#poppler-text-span-get-text" title="poppler_text_span_get_text ()">poppler_text_span_get_text</a> <span class="c_punctuation">()</span>
@@ -80,7 +80,7 @@
 </tr>
 <tr>
 <td class="function_type">
-<a href="../glib/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<span class="returnvalue">gboolean</span>
 </td>
 <td class="function_name">
 <a class="link" href="poppler-Poppler-Text-Span.html#poppler-text-span-is-bold-font" title="poppler_text_span_is_bold_font ()">poppler_text_span_is_bold_font</a> <span class="c_punctuation">()</span>
@@ -88,7 +88,7 @@
 </tr>
 <tr>
 <td class="function_type">
-<a href="../glib/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<span class="returnvalue">gboolean</span>
 </td>
 <td class="function_name">
 <a class="link" href="poppler-Poppler-Text-Span.html#poppler-text-span-is-fixed-width-font" title="poppler_text_span_is_fixed_width_font ()">poppler_text_span_is_fixed_width_font</a> <span class="c_punctuation">()</span>
@@ -96,7 +96,7 @@
 </tr>
 <tr>
 <td class="function_type">
-<a href="../glib/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<span class="returnvalue">gboolean</span>
 </td>
 <td class="function_name">
 <a class="link" href="poppler-Poppler-Text-Span.html#poppler-text-span-is-serif-font" title="poppler_text_span_is_serif_font ()">poppler_text_span_is_serif_font</a> <span class="c_punctuation">()</span>
@@ -218,7 +218,7 @@ poppler_text_span_get_color (<em class="parameter"><code><a class="link" href="p
 <hr>
 <div class="refsect2">
 <a name="poppler-text-span-get-font-name"></a><h3>poppler_text_span_get_font_name ()</h3>
-<pre class="programlisting">const <a href="../glib/glib-Basic-Types.html#gchar"><span class="returnvalue">gchar</span></a> *
+<pre class="programlisting">const <span class="returnvalue">gchar</span> *
 poppler_text_span_get_font_name (<em class="parameter"><code><a class="link" href="poppler-Poppler-Text-Span.html#PopplerTextSpan"><span class="type">PopplerTextSpan</span></a> *poppler_text_span</code></em>);</pre>
 <p>Obtains the name of the font in which the span is to be rendered.</p>
 <div class="refsect3">
@@ -239,7 +239,7 @@ poppler_text_span_get_font_name (<em class="parameter"><code><a class="link" hre
 <div class="refsect3">
 <a name="poppler-text-span-get-font-name.returns"></a><h4>Returns</h4>
 <p>A string containing the font name, or
-<a href="../glib/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if a font is not defined. </p>
+<code class="literal">NULL</code> if a font is not defined. </p>
 <p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
 </div>
 <p class="since">Since: <a class="link" href="api-index-0-26.html#api-index-0.26">0.26</a></p>
@@ -247,7 +247,7 @@ poppler_text_span_get_font_name (<em class="parameter"><code><a class="link" hre
 <hr>
 <div class="refsect2">
 <a name="poppler-text-span-get-text"></a><h3>poppler_text_span_get_text ()</h3>
-<pre class="programlisting">const <a href="../glib/glib-Basic-Types.html#gchar"><span class="returnvalue">gchar</span></a> *
+<pre class="programlisting">const <span class="returnvalue">gchar</span> *
 poppler_text_span_get_text (<em class="parameter"><code><a class="link" href="poppler-Poppler-Text-Span.html#PopplerTextSpan"><span class="type">PopplerTextSpan</span></a> *poppler_text_span</code></em>);</pre>
 <p>Obtains the text contained in the span.</p>
 <div class="refsect3">
@@ -275,7 +275,7 @@ poppler_text_span_get_text (<em class="parameter"><code><a class="link" href="po
 <hr>
 <div class="refsect2">
 <a name="poppler-text-span-is-bold-font"></a><h3>poppler_text_span_is_bold_font ()</h3>
-<pre class="programlisting"><a href="../glib/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<pre class="programlisting"><span class="returnvalue">gboolean</span>
 poppler_text_span_is_bold_font (<em class="parameter"><code><a class="link" href="poppler-Poppler-Text-Span.html#PopplerTextSpan"><span class="type">PopplerTextSpan</span></a> *poppler_text_span</code></em>);</pre>
 <p>Check whether a text span is meant to be rendered using a bold font.</p>
 <div class="refsect3">
@@ -302,7 +302,7 @@ poppler_text_span_is_bold_font (<em class="parameter"><code><a class="link" href
 <hr>
 <div class="refsect2">
 <a name="poppler-text-span-is-fixed-width-font"></a><h3>poppler_text_span_is_fixed_width_font ()</h3>
-<pre class="programlisting"><a href="../glib/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<pre class="programlisting"><span class="returnvalue">gboolean</span>
 poppler_text_span_is_fixed_width_font (<em class="parameter"><code><a class="link" href="poppler-Poppler-Text-Span.html#PopplerTextSpan"><span class="type">PopplerTextSpan</span></a> *poppler_text_span</code></em>);</pre>
 <p>Check wether a text span is meant to be rendered using a fixed-width font.</p>
 <div class="refsect3">
@@ -329,7 +329,7 @@ poppler_text_span_is_fixed_width_font (<em class="parameter"><code><a class="lin
 <hr>
 <div class="refsect2">
 <a name="poppler-text-span-is-serif-font"></a><h3>poppler_text_span_is_serif_font ()</h3>
-<pre class="programlisting"><a href="../glib/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<pre class="programlisting"><span class="returnvalue">gboolean</span>
 poppler_text_span_is_serif_font (<em class="parameter"><code><a class="link" href="poppler-Poppler-Text-Span.html#PopplerTextSpan"><span class="type">PopplerTextSpan</span></a> *poppler_text_span</code></em>);</pre>
 <p>Check whether a text span is meant to be rendered using a serif font.</p>
 <div class="refsect3">
@@ -363,6 +363,6 @@ poppler_text_span_is_serif_font (<em class="parameter"><code><a class="link" hre
 </div>
 </div>
 <div class="footer">
-<hr>Generated by GTK-Doc V1.33.1</div>
+<hr>Generated by GTK-Doc V1.34.0</div>
 </body>
 </html>

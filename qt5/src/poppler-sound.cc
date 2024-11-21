@@ -1,6 +1,6 @@
 /* poppler-sound.cc: qt interface to poppler
  * Copyright (C) 2006-2007, Pino Toscano <pino@kde.org>
- * Copyright (C) 2008, 2018, 2020, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2008, 2018, 2020, 2024, Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -67,16 +67,18 @@ SoundObject::SoundType SoundObject::soundType() const
 
 QString SoundObject::url() const
 {
-    if (m_soundData->m_type != SoundObject::External)
+    if (m_soundData->m_type != SoundObject::External) {
         return QString();
+    }
 
     return QString(m_soundData->m_soundObj->getFileName().c_str());
 }
 
 QByteArray SoundObject::data() const
 {
-    if (m_soundData->m_type != SoundObject::Embedded)
+    if (m_soundData->m_type != SoundObject::Embedded) {
         return QByteArray();
+    }
 
     Stream *stream = m_soundData->m_soundObj->getStream();
     stream->reset();

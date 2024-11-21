@@ -1,5 +1,5 @@
 /* poppler-link.cc: qt interface to poppler
- * Copyright (C) 2006-2007, 2013, 2016-2021, Albert Astals Cid
+ * Copyright (C) 2006-2007, 2013, 2016-2021, 2024, Albert Astals Cid
  * Copyright (C) 2007-2008, Pino Toscano <pino@kde.org>
  * Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
  * Copyright (C) 2012, Tobias Koenig <tokoe@kdab.com>
@@ -7,6 +7,7 @@
  * Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
  * Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2020, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -74,6 +75,8 @@ LinkPrivate::~LinkPrivate() = default;
 LinkOCGStatePrivate::~LinkOCGStatePrivate() = default;
 
 LinkHidePrivate::~LinkHidePrivate() = default;
+
+LinkResetFormPrivate::~LinkResetFormPrivate() = default;
 
 class LinkGotoPrivate : public LinkPrivate
 {
@@ -152,17 +155,17 @@ LinkSoundPrivate::~LinkSoundPrivate()
 class LinkRenditionPrivate : public LinkPrivate
 {
 public:
-    LinkRenditionPrivate(const QRectF &area, ::MediaRendition *rendition, ::LinkRendition::RenditionOperation operation, const QString &script, const Ref ref);
+    LinkRenditionPrivate(const QRectF &area, std::unique_ptr<::MediaRendition> &&r, ::LinkRendition::RenditionOperation operation, const QString &script, const Ref ref);
     ~LinkRenditionPrivate() override;
 
-    MediaRendition *rendition;
+    std::unique_ptr<MediaRendition> rendition;
     LinkRendition::RenditionAction action;
     QString script;
     Ref annotationReference;
 };
 
-LinkRenditionPrivate::LinkRenditionPrivate(const QRectF &area, ::MediaRendition *r, ::LinkRendition::RenditionOperation operation, const QString &javaScript, const Ref ref)
-    : LinkPrivate(area), rendition(r ? new MediaRendition(r) : nullptr), action(LinkRendition::PlayRendition), script(javaScript), annotationReference(ref)
+LinkRenditionPrivate::LinkRenditionPrivate(const QRectF &area, std::unique_ptr<::MediaRendition> &&r, ::LinkRendition::RenditionOperation operation, const QString &javaScript, const Ref ref)
+    : LinkPrivate(area), rendition(r ? new MediaRendition(std::move(r)) : nullptr), action(LinkRendition::PlayRendition), script(javaScript), annotationReference(ref)
 {
     switch (operation) {
     case ::LinkRendition::NoRendition:
@@ -183,10 +186,7 @@ LinkRenditionPrivate::LinkRenditionPrivate(const QRectF &area, ::MediaRendition 
     }
 }
 
-LinkRenditionPrivate::~LinkRenditionPrivate()
-{
-    delete rendition;
-}
+LinkRenditionPrivate::~LinkRenditionPrivate() = default;
 
 class LinkJavaScriptPrivate : public LinkPrivate
 {
@@ -239,29 +239,31 @@ LinkDestination::LinkDestination(const LinkDestinationData &data) : d(new LinkDe
         d->name = QString::fromLatin1(data.namedDest->c_str());
     }
 
-    if (!ld)
+    if (!ld) {
         return;
+    }
 
-    if (ld->getKind() == ::destXYZ)
+    if (ld->getKind() == ::destXYZ) {
         d->kind = destXYZ;
-    else if (ld->getKind() == ::destFit)
+    } else if (ld->getKind() == ::destFit) {
         d->kind = destFit;
-    else if (ld->getKind() == ::destFitH)
+    } else if (ld->getKind() == ::destFitH) {
         d->kind = destFitH;
-    else if (ld->getKind() == ::destFitV)
+    } else if (ld->getKind() == ::destFitV) {
         d->kind = destFitV;
-    else if (ld->getKind() == ::destFitR)
+    } else if (ld->getKind() == ::destFitR) {
         d->kind = destFitR;
-    else if (ld->getKind() == ::destFitB)
+    } else if (ld->getKind() == ::destFitB) {
         d->kind = destFitB;
-    else if (ld->getKind() == ::destFitBH)
+    } else if (ld->getKind() == ::destFitBH) {
         d->kind = destFitBH;
-    else if (ld->getKind() == ::destFitBV)
+    } else if (ld->getKind() == ::destFitBV) {
         d->kind = destFitBV;
+    }
 
-    if (!ld->isPageRef())
+    if (!ld->isPageRef()) {
         d->pageNum = ld->getPageNum();
-    else {
+    } else {
         const Ref ref = ld->getPageRef();
         d->pageNum = data.doc->doc->findPage(ref);
     }
@@ -286,12 +288,14 @@ LinkDestination::LinkDestination(const LinkDestinationData &data) : d(new LinkDe
             d->top = topAux / (double)page->getCropHeight();
             d->right = rightAux / (double)page->getCropWidth();
             d->bottom = bottomAux / (double)page->getCropHeight();
-        } else
+        } else {
             d->pageNum = 0;
+        }
     }
 
-    if (deleteDest)
+    if (deleteDest) {
         delete ld;
+    }
 }
 
 LinkDestination::LinkDestination(const QString &description) : d(new LinkDestinationPrivate)
@@ -387,8 +391,9 @@ QString LinkDestination::destinationName() const
 
 LinkDestination &LinkDestination::operator=(const LinkDestination &other)
 {
-    if (this == &other)
+    if (this == &other) {
         return *this;
+    }
 
     d = other.d;
     return *this;
@@ -573,7 +578,12 @@ SoundObject *LinkSound::sound() const
 
 // LinkRendition
 LinkRendition::LinkRendition(const QRectF &linkArea, ::MediaRendition *rendition, int operation, const QString &script, const Ref annotationReference)
-    : Link(*new LinkRenditionPrivate(linkArea, rendition, static_cast<enum ::LinkRendition::RenditionOperation>(operation), script, annotationReference))
+    : LinkRendition(linkArea, std::unique_ptr<::MediaRendition>(rendition), operation, script, annotationReference)
+{
+}
+
+LinkRendition::LinkRendition(const QRectF &linkArea, std::unique_ptr<::MediaRendition> &&rendition, int operation, const QString &script, const Ref annotationReference)
+    : Link(*new LinkRenditionPrivate(linkArea, std::move(rendition), static_cast<enum ::LinkRendition::RenditionOperation>(operation), script, annotationReference))
 {
 }
 
@@ -587,7 +597,7 @@ Link::LinkType LinkRendition::linkType() const
 MediaRendition *LinkRendition::rendition() const
 {
     Q_D(const LinkRendition);
-    return d->rendition;
+    return d->rendition.get();
 }
 
 LinkRendition::RenditionAction LinkRendition::action() const
@@ -689,5 +699,15 @@ bool LinkHide::isShowAction() const
 {
     Q_D(const LinkHide);
     return d->isShow;
+}
+
+// LinkResetForm
+LinkResetForm::LinkResetForm(LinkResetFormPrivate *lrfp) : Link(*lrfp) { }
+
+LinkResetForm::~LinkResetForm() { }
+
+Link::LinkType LinkResetForm::linkType() const
+{
+    return ResetForm;
 }
 }

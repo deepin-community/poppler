@@ -1,30 +1,212 @@
-poppler (22.02.0-3deepin0) unstable; urgency=medium
+poppler (24.08.0-3) unstable; urgency=medium
 
-  [ Debian freedesktop.org maintainers ]
-  * update
+  [ John Scott ]
+  * Enable the GnuPG/gpgsm PDF signature backend.
 
-  [ Tianyu Chen ]
-  * No source change upload against GCC 12.
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Wed, 23 Oct 2024 09:35:17 +0200
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 20 Sep 2024 12:15:48 +0800
+poppler (24.08.0-2) unstable; urgency=medium
 
-poppler (22.02.0-3) unstable; urgency=medium
-
+  * Team upload
   * Release to unstable
 
- -- Jeremy Bicha <jbicha@ubuntu.com>  Thu, 17 Mar 2022 12:55:43 -0400
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Sun, 18 Aug 2024 10:46:36 -0400
 
-poppler (22.02.0-2) experimental; urgency=medium
+poppler (24.08.0-1) experimental; urgency=medium
 
-  [ Steve Langasek ]
-  * Add segfault-on-unset-catalog.patch:
-    fix a segfault when a document does not have a catalog
+  * Team upload
+
+  [ Jeremy Bícha ]
+  * New upstream release
+  * Update library name to libpoppler140 to match soname bump
+  * debian/libpoppler-qt*.symbols.in: Add new symbols
+
+  [ Dandan Zhang ]
+  * Build qt6 library for loong64 (Closes: #1074410)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 01 Aug 2024 19:46:39 -0400
+
+poppler (24.06.0-2) experimental; urgency=medium
+
+  * Update symbols files
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 20 Jun 2024 09:03:23 -0400
+
+poppler (24.06.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library names to libpoppler134 & libpoppler-cpp1 for soname bumps
+  * debian/poppler-utils.install: Install pdfsig translation
+  * Bump Standards Version to 4.7.0
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Tue, 04 Jun 2024 11:17:27 -0400
+
+poppler (24.02.0-5) unstable; urgency=medium
+
+  * Team upload
+  * Stop building Qt6 library on i386
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 16 May 2024 10:25:19 +0200
+
+poppler (24.02.0-4) unstable; urgency=medium
+
+  * Team upload
+  * Fix error in declaring Replaces: libpoppler-cpp0v5 (Closes: #1071009)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 13 May 2024 13:32:22 +0200
+
+poppler (24.02.0-3) unstable; urgency=medium
+
+  * Team upload
+  * Restore t64 changes from 22.12.0-2.2 and bump Breaks/Replaces.
+    Use standard versioned Replaces instead of unversioned. (Closes: #1070862)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 10 May 2024 14:18:27 -0400
+
+poppler (24.02.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Release to unstable
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 10 May 2024 05:43:01 -0400
+
+poppler (24.02.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library name to libpoppler134 to match soname
+  * debian/copyright: Update path of a moved file
+
+ -- Amin Bandali <bandali@ubuntu.com>  Tue, 13 Feb 2024 11:59:19 -0500
+
+poppler (23.12.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library name to libpoppler133 to match soname
+  * Add new symbols to symbols files
+  * Build-Depend on libcurl4-gnutls-dev
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 01 Dec 2023 10:08:39 -0500
+
+poppler (23.08.0-2) experimental; urgency=medium
+
+  * Team upload
 
   [ Jeremy Bicha ]
-  * Add some optional symbols that show in 32-bit builds
-  * Revert unneeded "debian/rules: Set DPKG_GENSYMBOLS_CHECK_LEVEL = 4"
+  * Explicitly disable gpg support for now
 
- -- Jeremy Bicha <jeremy.bicha@canonical.com>  Mon, 07 Feb 2022 08:17:59 -0500
+  [ Amin Bandali ]
+  * 23.08.0 upstream release addresses CVE-2023-34872 (Closes: #1042811)
+  * debian/rules: Opt into LTO (to minimize symbols diff with Ubuntu)
+  * Drop most optional symbols from libpoppler-qt5-1 and libpoppler-qt6-3
+
+ -- Amin Bandali <bandali@ubuntu.com>  Wed, 16 Aug 2023 10:20:27 -0400
+
+poppler (23.08.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release (Closes: #969907)
+  * Update library name to libpoppler130 to match soname
+  * Address some lintian error and warnings:
+    - E: libpoppler-private-dev: depends-on-obsolete-package
+      Suggests: libfreetype6-dev => libfreetype-dev
+    - W: poppler source: build-depends-on-obsolete-package
+      Build-Depends: libfontconfig1-dev => libfontconfig-dev
+    - W: poppler source: build-depends-on-obsolete-package
+      Build-Depends: libfreetype6-dev => libfreetype-dev
+  * Update standards version to 4.6.2, no changes needed
+  * Update minimum version of several Build-Depends and Depends
+    per upstream
+
+ -- Amin Bandali <bandali@ubuntu.com>  Thu, 10 Aug 2023 17:27:57 -0400
+
+poppler (22.12.0-2.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Fix wrong extraneous X-Time64-Compat declarations.  Closes: #1065155.
+
+ -- Steve Langasek <vorlon@debian.org>  Sun, 03 Mar 2024 08:43:35 +0000
+
+poppler (22.12.0-2.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Rename libraries for 64-bit time_t transition.  Closes: #1064282
+
+ -- Benjamin Drung <bdrung@debian.org>  Thu, 29 Feb 2024 21:10:54 +0000
+
+poppler (22.12.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Release to unstable
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Tue, 10 Jan 2023 16:36:05 -0500
+
+poppler (22.12.0-1) experimental; urgency=medium
+
+  * Team upload
+
+  [ Nathan Pratta Teodosio ]
+  * New upstream release
+  * Update library name to libpoppler126 to match soname
+
+  [ Jeremy Bicha ]
+  * Fix qt6 autopkgtest
+  * debian/control: Set Rules-Requires-Root: no
+
+ -- Nathan Pratta Teodosio <nathan.teodosio@canonical.com>  Mon, 12 Dec 2022 14:16:40 -0300
+
+poppler (22.11.0-1) experimental; urgency=medium
+
+  [ Jeremy Bicha ]
+  * New upstream release
+  * Update library name to libpoppler125 to match soname
+  * Add Qt6 library (Closes: #1008990)
+  * Update links in debian/upstream/metadata
+  * Drop all patches: applied in new release
+  * Drop obsolete Breaks added long ago to fix 774949
+  * Run dh_auto_test but ignore test failures for now because of missing
+    test files
+
+  [ Debian Janitor ]
+  * Trim trailing whitespace
+  * Set upstream metadata fields
+  * Remove obsolete field Name from debian/upstream/metadata
+  * Update standards version to 4.6.1, no changes needed.
+  * Apply multi-arch hints. + libpoppler-glib-doc: Add Multi-Arch: foreign.
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Tue, 01 Nov 2022 15:15:59 +0100
+
+poppler (22.08.0-2.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * JBIG2Stream: Fix crash on broken file (CVE-2022-38784) (Closes: #1018971)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 03 Sep 2022 21:30:51 +0200
+
+poppler (22.08.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Upload to unstable
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Sun, 21 Aug 2022 13:13:33 -0400
+
+poppler (22.08.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library name to libpoppler123 to match soname
+  * debian/libpoppler-glib8.symbols.in: Add new symbols
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Wed, 10 Aug 2022 10:04:47 -0400
+
+poppler (22.06.0-1) experimental; urgency=medium
+
+  * New upstream version
+  * libpoppler118->libpoppler122
+
+ -- Nathan Pratta Teodosio <nathan.teodosio@canonical.com>  Thu, 09 Jun 2022 21:47:08 -0300
 
 poppler (22.02.0-1) experimental; urgency=medium
 
@@ -64,7 +246,7 @@ poppler (21.06.0-1) experimental; urgency=medium
 poppler (21.02.0-1) experimental; urgency=medium
 
   * New upstream version, updated for the soname change
-  * debian/control: 
+  * debian/control:
     - build-depends on libgdk-pixbuf-2.0-dev and libgtk-3-dev
     - updated standards version
   * debian/libpoppler-dev.install:

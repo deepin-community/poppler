@@ -6,9 +6,9 @@
 //
 // Copyright 2013, 2014 Igalia S.L.
 // Copyright 2014 Luigi Scarso <luigi.scarso@gmail.com>
-// Copyright 2014, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright 2014, 2018, 2019, 2021, 2023 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright 2021 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 //
 //========================================================================
 
@@ -242,9 +242,12 @@ public:
 
     int getMCID() const { return c->mcid; }
     Ref getObjectRef() const { return c->ref; }
-    Ref getParentRef() { return isContent() ? parent->getParentRef() : s->parentRef; }
+    Ref getParentRef() const { return isContent() ? parent->getParentRef() : s->parentRef; }
+    StructElement *getParent() const { return parent; } // returns NULL if parent is StructTreeRoot
     bool hasPageRef() const;
     bool getPageRef(Ref &ref) const;
+    bool hasStmRef() const { return stmRef.isRef(); }
+    bool getStmRef(Ref &ref) const;
     StructTreeRoot *getStructTreeRoot() { return treeRoot; }
 
     // Optional element identifier.
@@ -254,14 +257,16 @@ public:
     // Optional ISO language name, e.g. en_US
     GooString *getLanguage()
     {
-        if (!isContent() && s->language)
+        if (!isContent() && s->language) {
             return s->language;
+        }
         return parent ? parent->getLanguage() : nullptr;
     }
     const GooString *getLanguage() const
     {
-        if (!isContent() && s->language)
+        if (!isContent() && s->language) {
             return s->language;
+        }
         return parent ? parent->getLanguage() : nullptr;
     }
 
@@ -269,8 +274,9 @@ public:
     unsigned int getRevision() const { return isContent() ? 0 : s->revision; }
     void setRevision(unsigned int revision)
     {
-        if (isContent())
+        if (isContent()) {
             s->revision = revision;
+        }
     }
 
     // Optional element title, in human-readable form.
@@ -328,8 +334,9 @@ public:
 
     const TextSpanArray getTextSpans() const
     {
-        if (!isContent())
+        if (!isContent()) {
             return TextSpanArray();
+        }
         MarkedContentOutputDev mcdev(getMCID(), stmRef);
         return getTextSpansInternal(mcdev);
     }
@@ -387,13 +394,13 @@ private:
         ContentData *c;
     };
 
-    StructElement(Dict *elementDict, StructTreeRoot *treeRootA, StructElement *parentA, std::set<int> &seen);
+    StructElement(Dict *elementDict, StructTreeRoot *treeRootA, StructElement *parentA, RefRecursionChecker &seen);
     StructElement(int mcid, StructTreeRoot *treeRootA, StructElement *parentA);
     StructElement(const Ref ref, StructTreeRoot *treeRootA, StructElement *parentA);
 
     void parse(Dict *elementDict);
-    StructElement *parseChild(const Object *ref, Object *childObj, std::set<int> &seen);
-    void parseChildren(Dict *element, std::set<int> &seen);
+    StructElement *parseChild(const Object *ref, Object *childObj, RefRecursionChecker &seen);
+    void parseChildren(Dict *element, RefRecursionChecker &seen);
     void parseAttributes(Dict *attributes, bool keepExisting = false);
 
     friend class StructTreeRoot;

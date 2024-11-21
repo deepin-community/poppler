@@ -6,10 +6,12 @@ UPSTREAM_VERSION := $(shell dpkg-parsechangelog | sed -n 's/^Version: //p' | cut
 SYMBOLS_in := $(wildcard debian/*.symbols.in)
 SYMBOLS_generated := $(patsubst %.in,%,$(SYMBOLS_in))
 
-libpopplerN := $(shell sed -rn 's/^Package:[[:space:]]*(libpoppler[0-9]+)[[:space:]]*$$/\1/p' debian/control)
+libpopplerN := $(shell sed -rn 's/^Package:[[:space:]]*(libpoppler[0-9]+(t64)?)[[:space:]]*$$/\1/p' debian/control)
+
+built_binaries := $(shell dh_listpackages)
 
 # enable all the hardening options
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=+lto
 
 # disable gtk stuff to minimize Build-Depends
 CONFIGURE_ARGS :=				\
@@ -24,6 +26,10 @@ CONFIGURE_ARGS :=				\
 	-DENABLE_CMS=lcms2			\
 	-DENABLE_LIBOPENJPEG=openjpeg2		\
 	-DBUILD_GTK_TESTS=OFF
+
+ifeq ($(filter %-qt6-dev,$(built_binaries)),)
+CONFIGURE_ARGS += -DENABLE_QT6=OFF
+endif
 
 %:
 	dh $@
@@ -46,4 +52,10 @@ override_dh_makeshlibs: $(SYMBOLS_generated)
 debian/%.symbols: debian/%.symbols.in
 	cat $^ | sed -e 's/#CURVER#/$(UPSTREAM_VERSION)/g' > $@
 
-.PHONY: override_dh_auto_test
+# TODO: https://gitlab.freedesktop.org/poppler/test
+# has the missing unittestcases directory
+# We could add an extra tarball as was done with editorconfig-core
+# Or we could ask upstream if it makes sense to move those tests
+# into the same git repo
+override_dh_auto_test:
+	-dh_auto_test

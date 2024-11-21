@@ -12,6 +12,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -56,20 +57,24 @@ EmbFile::EmbFile(Object &&efStream)
         Object paramDict = dataDict->lookup("Params");
         if (paramDict.isDict()) {
             Object paramObj = paramDict.dictLookup("ModDate");
-            if (paramObj.isString())
+            if (paramObj.isString()) {
                 m_modDate = new GooString(paramObj.getString());
+            }
 
             paramObj = paramDict.dictLookup("CreationDate");
-            if (paramObj.isString())
+            if (paramObj.isString()) {
                 m_createDate = new GooString(paramObj.getString());
+            }
 
             paramObj = paramDict.dictLookup("Size");
-            if (paramObj.isInt())
+            if (paramObj.isInt()) {
                 m_size = paramObj.getInt();
+            }
 
             paramObj = paramDict.dictLookup("CheckSum");
-            if (paramObj.isString())
+            if (paramObj.isString()) {
                 m_checksum = new GooString(paramObj.getString());
+            }
         }
     }
 }
@@ -82,12 +87,12 @@ EmbFile::~EmbFile()
     delete m_mimetype;
 }
 
-bool EmbFile::save(const char *path)
+bool EmbFile::save(const std::string &path)
 {
     FILE *f;
     bool ret;
 
-    if (!(f = openFile(path, "wb"))) {
+    if (!(f = openFile(path.c_str(), "wb"))) {
         return false;
     }
     ret = save2(f);
@@ -99,8 +104,9 @@ bool EmbFile::save2(FILE *f)
 {
     int c;
 
-    if (unlikely(!m_objStr.isStream()))
+    if (unlikely(!m_objStr.isStream())) {
         return false;
+    }
 
     m_objStr.streamReset();
     while ((c = m_objStr.streamGetChar()) != EOF) {
@@ -156,11 +162,13 @@ FileSpec::~FileSpec()
 
 EmbFile *FileSpec::getEmbeddedFile()
 {
-    if (!ok || !fileSpec.isDict())
+    if (!ok || !fileSpec.isDict()) {
         return nullptr;
+    }
 
-    if (embFile)
+    if (embFile) {
         return embFile;
+    }
 
     XRef *xref = fileSpec.getDict()->getXRef();
     embFile = new EmbFile(fileStream.fetch(xref));
@@ -196,12 +204,14 @@ Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string 
 
 GooString *FileSpec::getFileNameForPlatform()
 {
-    if (platformFileName)
+    if (platformFileName) {
         return platformFileName;
+    }
 
     Object obj1 = getFileSpecNameForPlatform(&fileSpec);
-    if (obj1.isString())
+    if (obj1.isString()) {
         platformFileName = obj1.getString()->copy();
+    }
 
     return platformFileName;
 }

@@ -2,6 +2,7 @@
  * Copyright (C) 2009-2010, Pino Toscano <pino@kde.org>
  * Copyright (C) 2018, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2019, Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,9 +62,8 @@ toc_item_private::~toc_item_private()
 
 void toc_item_private::load(const OutlineItem *item)
 {
-    const Unicode *title_unicode = item->getTitle();
-    const int title_length = item->getTitleLength();
-    title = detail::unicode_to_ustring(title_unicode, title_length);
+    const std::vector<Unicode> &title_unicode = item->getTitle();
+    title = detail::unicode_to_ustring(title_unicode.data(), title_unicode.size());
     is_open = item->isOpen();
 }
 

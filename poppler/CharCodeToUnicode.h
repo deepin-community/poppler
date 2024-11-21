@@ -17,11 +17,12 @@
 //
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2007 Koji Otani <sho@bbr.jp>
-// Copyright (C) 2008, 2011, 2012, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2011, 2012, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 <corentinf@free.fr>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -32,11 +33,12 @@
 #define CHARCODETOUNICODE_H
 
 #include <atomic>
+#include <optional>
+#include <vector>
 
 #include "poppler-config.h"
 #include "CharTypes.h"
 
-struct CharCodeToUnicodeString;
 class GooString;
 
 //------------------------------------------------------------------------
@@ -54,11 +56,6 @@ public:
     // Returns NULL on failure.
     static CharCodeToUnicode *parseCIDToUnicode(const char *fileName, const GooString *collection);
 
-    // Create a Unicode-to-Unicode mapping from the file specified by
-    // <fileName>.  Sets the initial reference count to 1.  Returns NULL
-    // on failure.
-    static CharCodeToUnicode *parseUnicodeToUnicode(const GooString *fileName);
-
     // Create the CharCode-to-Unicode mapping for an 8-bit font.
     // <toUnicode> is an array of 256 Unicode indexes.  Sets the initial
     // reference count to 1.
@@ -72,7 +69,7 @@ public:
     // <this>.
     void mergeCMap(const GooString *buf, int nBits);
 
-    ~CharCodeToUnicode();
+    ~CharCodeToUnicode() = default;
 
     CharCodeToUnicode(const CharCodeToUnicode &) = delete;
     CharCodeToUnicode &operator=(const CharCodeToUnicode &) = delete;
@@ -94,23 +91,22 @@ public:
     // Map a Unicode to CharCode.
     int mapToCharCode(const Unicode *u, CharCode *c, int usize) const;
 
-    // Return the mapping's length, i.e., one more than the max char
-    // code supported by the mapping.
-    CharCode getLength() const { return mapLen; }
-
 private:
+    struct CharCodeToUnicodeString
+    {
+        CharCode c;
+        std::vector<Unicode> u;
+    };
     bool parseCMap1(int (*getCharFunc)(void *), void *data, int nBits);
     void addMapping(CharCode code, char *uStr, int n, int offset);
     void addMappingInt(CharCode code, Unicode u);
     CharCodeToUnicode();
-    explicit CharCodeToUnicode(GooString *tagA);
-    CharCodeToUnicode(GooString *tagA, Unicode *mapA, CharCode mapLenA, bool copyMap, CharCodeToUnicodeString *sMapA, int sMapLenA, int sMapSizeA);
+    explicit CharCodeToUnicode(const std::optional<std::string> &tagA);
+    CharCodeToUnicode(const std::optional<std::string> &tagA, std::vector<Unicode> &&mapA, std::vector<CharCodeToUnicodeString> &&sMapA);
 
-    GooString *tag;
-    Unicode *map;
-    CharCode mapLen;
-    CharCodeToUnicodeString *sMap;
-    int sMapLen, sMapSize;
+    const std::optional<std::string> tag;
+    std::vector<Unicode> map;
+    std::vector<CharCodeToUnicodeString> sMap;
     std::atomic_int refCnt;
     bool isIdentity;
 };
