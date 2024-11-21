@@ -29,6 +29,5 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     poppler_document_set_title(doc, buf);
 
     free(buf);
-    g_object_unref(doc);
     return 0;
 }

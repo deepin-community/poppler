@@ -6,19 +6,18 @@
 //
 // Copyright 2015 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2015 André Esser <bepandre@hotmail.com>
-// Copyright 2015, 2017-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2015, 2017-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright 2016 Markus Kilås <digital@markuspage.com>
 // Copyright 2017, 2019 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
 // Copyright 2017, 2019 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@protonmail.com>
 // Copyright 2019 Alexey Pavlov <alexpux@gmail.com>
-// Copyright 2019. 2023, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2019 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2019 Nelson Efrain A. Cruz <neac03@gmail.com>
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2022 Felix Jung <fxjung@posteo.de>
-// Copyright 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2022 Erich E. Hoover <erich.e.hoover@gmail.com>
 //
 //========================================================================
 
@@ -29,6 +28,7 @@
 #include <cstddef>
 #include <cstring>
 #include <ctime>
+#include <hasht.h>
 #include <fstream>
 #include <random>
 #include "parseargs.h"
@@ -38,27 +38,15 @@
 #include "Page.h"
 #include "PDFDoc.h"
 #include "PDFDocFactory.h"
-#include "DateInfo.h"
 #include "Error.h"
 #include "GlobalParams.h"
-#ifdef ENABLE_NSS3
-#    include "NSSCryptoSignBackend.h"
-#endif
-#include "CryptoSignBackend.h"
+#include "SignatureHandler.h"
 #include "SignatureInfo.h"
 #include "Win32Console.h"
 #include "numberofcharacters.h"
 #include "UTF.h"
 #if __has_include(<libgen.h>)
 #    include <libgen.h>
-#endif
-
-#ifdef HAVE_GETTEXT
-#    include <libintl.h>
-#    include <clocale>
-#    define _(STRING) gettext(STRING)
-#else
-#    define _(STRING) STRING
 #endif
 
 static const char *getReadableSigState(SignatureValidationStatus sig_vs)
@@ -129,10 +117,10 @@ static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, cons
     // We want format to be {0:s}.sig{1:Xd} where X is sigCountLength
     // since { is the magic character to replace things we need to put it twice where
     // we don't want it to be replaced
-    const std::string format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
-    const std::string path = GooString::format(format.c_str(), gbasename(filename).c_str(), sig_num);
-    printf("Signature #%d (%u bytes) => %s\n", sig_num, signature->getLength(), path.c_str());
-    std::ofstream outfile(path.c_str(), std::ofstream::binary);
+    const std::unique_ptr<GooString> format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
+    const std::unique_ptr<GooString> path = GooString::format(format->c_str(), gbasename(filename).c_str(), sig_num);
+    printf("Signature #%d (%u bytes) => %s\n", sig_num, signature->getLength(), path->c_str());
+    std::ofstream outfile(path->c_str(), std::ofstream::binary);
     outfile.write(signature->c_str(), signature->getLength());
     outfile.close();
 
@@ -145,13 +133,10 @@ static char ownerPassword[33] = "\001";
 static char userPassword[33] = "\001";
 static bool printVersion = false;
 static bool printHelp = false;
-static bool printCryptoSignBackends = false;
 static bool dontVerifyCert = false;
 static bool noOCSPRevocationCheck = false;
-static bool noAppearance = false;
 static bool dumpSignatures = false;
 static bool etsiCAdESdetached = false;
-static char backendString[256] = "";
 static char signatureName[256] = "";
 static char certNickname[256] = "";
 static char password[256] = "";
@@ -166,26 +151,22 @@ static const ArgDesc argDesc[] = { { "-nssdir", argGooString, &nssDir, 0, "path 
                                    { "-nss-pwd", argGooString, &nssPassword, 0, "password to access the NSS database (if any)" },
                                    { "-nocert", argFlag, &dontVerifyCert, 0, "don't perform certificate validation" },
                                    { "-no-ocsp", argFlag, &noOCSPRevocationCheck, 0, "don't perform online OCSP certificate revocation check" },
-                                   { "-no-appearance", argFlag, &noAppearance, 0, "don't add appearance information when signing existing fields" },
                                    { "-aia", argFlag, &useAIACertFetch, 0, "use Authority Information Access (AIA) extension for certificate fetching" },
                                    { "-dump", argFlag, &dumpSignatures, 0, "dump all signatures into current directory" },
                                    { "-add-signature", argFlag, &addNewSignature, 0, "adds a new signature to the document" },
                                    { "-new-signature-field-name", argGooString, &newSignatureFieldName, 0, "field name used for the newly added signature. A random ID will be used if empty" },
                                    { "-sign", argString, &signatureName, 256, "sign the document in the given signature field (by name or number)" },
                                    { "-etsi", argFlag, &etsiCAdESdetached, 0, "create a signature of type ETSI.CAdES.detached instead of adbe.pkcs7.detached" },
-                                   { "-backend", argString, &backendString, 256, "use given backend for signing/verification" },
-                                   { "-nick", argString, &certNickname, 256, "use the certificate with the given nickname/fingerprint for signing" },
+                                   { "-nick", argString, &certNickname, 256, "use the certificate with the given nickname for signing" },
                                    { "-kpw", argString, &password, 256, "password for the signing key (might be missing if the key isn't password protected)" },
                                    { "-digest", argString, &digestName, 256, "name of the digest algorithm (default: SHA256)" },
                                    { "-reason", argGooString, &reason, 0, "reason for signing (default: no reason given)" },
                                    { "-list-nicks", argFlag, &listNicknames, 0, "list available nicknames in the NSS database" },
-                                   { "-list-backends", argFlag, &printCryptoSignBackends, 0, "print cryptographic signature backends" },
                                    { "-opw", argString, ownerPassword, sizeof(ownerPassword), "owner password (for encrypted files)" },
                                    { "-upw", argString, userPassword, sizeof(userPassword), "user password (for encrypted files)" },
                                    { "-v", argFlag, &printVersion, 0, "print copyright and version info" },
                                    { "-h", argFlag, &printHelp, 0, "print usage information" },
                                    { "-help", argFlag, &printHelp, 0, "print usage information" },
-                                   { "--help", argFlag, &printHelp, 0, "print usage information" },
                                    { "-?", argFlag, &printHelp, 0, "print usage information" },
                                    {} };
 
@@ -199,29 +180,8 @@ static void print_version_usage(bool usage)
     }
 }
 
-static void print_backends()
-{
-    fprintf(stderr, "pdfsig backends:\n");
-    for (const auto &backend : CryptoSign::Factory::getAvailable()) {
-        switch (backend) {
-        case CryptoSign::Backend::Type::NSS3:
-            fprintf(stderr, "NSS");
-            break;
-        case CryptoSign::Backend::Type::GPGME:
-            fprintf(stderr, "GPG");
-            break;
-        }
-        if (backend == CryptoSign::Factory::getActive()) {
-            fprintf(stderr, " (active)\n");
-        } else {
-            fprintf(stderr, "\n");
-        }
-    }
-}
-
 static std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCertificates(bool *error)
 {
-#ifdef ENABLE_NSS3
     bool wrongPassword = false;
     bool passwordNeeded = false;
     auto passwordCallback = [&passwordNeeded, &wrongPassword](const char *) -> char * {
@@ -238,17 +198,9 @@ static std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCert
             return nullptr;
         }
     };
-    NSSSignatureConfiguration::setNSSPasswordCallback(passwordCallback);
-#endif
-    auto backend = CryptoSign::Factory::createActive();
-    if (!backend) {
-        *error = true;
-        printf("No backends for cryptographic signatures available");
-        return {};
-    }
-    std::vector<std::unique_ptr<X509CertificateInfo>> vCerts = backend->getAvailableSigningCertificates();
-#ifdef ENABLE_NSS3
-    NSSSignatureConfiguration::setNSSPasswordCallback({});
+    SignatureHandler::setNSSPasswordCallback(passwordCallback);
+    std::vector<std::unique_ptr<X509CertificateInfo>> vCerts = SignatureHandler::getAvailableSigningCertificates();
+    SignatureHandler::setNSSPasswordCallback({});
     if (passwordNeeded) {
         *error = true;
         printf("Password is needed to access the NSS database.\n");
@@ -262,38 +214,24 @@ static std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCert
         return {};
     }
 
-#endif
     *error = false;
     return vCerts;
-}
-
-static std::string locationToString(KeyLocation location)
-{
-    switch (location) {
-    case KeyLocation::Unknown:
-        return {};
-    case KeyLocation::Other:
-        return "(Other)";
-    case KeyLocation::Computer:
-        return "(Computer)";
-    case KeyLocation::HardwareToken:
-        return "(Hardware Token)";
-    }
-    return {};
 }
 
 static std::string TextStringToUTF8(const std::string &str)
 {
     const UnicodeMap *utf8Map = globalParams->getUtf8Map();
 
-    std::vector<Unicode> u = TextStringToUCS4(str);
+    Unicode *u;
+    const int len = TextStringToUCS4(str, &u);
 
     std::string convertedStr;
-    for (auto &c : u) {
+    for (int i = 0; i < len; ++i) {
         char buf[8];
-        const int n = utf8Map->mapUnicode(c, buf, sizeof(buf));
+        const int n = utf8Map->mapUnicode(u[i], buf, sizeof(buf));
         convertedStr.append(buf, n);
     }
+    gfree(u);
 
     return convertedStr;
 }
@@ -322,24 +260,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    if (strlen(backendString) > 0) {
-        auto backend = CryptoSign::Factory::typeFromString(backendString);
-        if (backend) {
-            CryptoSign::Factory::setPreferredBackend(backend.value());
-        } else {
-            fprintf(stderr, "Unsupported backend\n");
-            return 98;
-        }
-    }
-
-    if (printCryptoSignBackends) {
-        print_backends();
-        return 0;
-    }
-
-#ifdef ENABLE_NSS3
-    NSSSignatureConfiguration::setNSSDir(nssDir);
-#endif
+    SignatureHandler::setNSSDir(nssDir);
 
     if (listNicknames) {
         bool getCertsError;
@@ -353,8 +274,7 @@ int main(int argc, char *argv[])
                 printf("Certificate nicknames available:\n");
                 for (auto &cert : vCerts) {
                     const GooString &nick = cert->getNickName();
-                    const auto location = locationToString(cert->getKeyLocation());
-                    printf("%s %s\n", nick.c_str(), location.c_str());
+                    printf("%s\n", nick.c_str());
                 }
             }
         }
@@ -434,7 +354,8 @@ int main(int argc, char *argv[])
             return 2;
         }
 
-        const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : std::make_unique<GooString>(utf8ToUtf16WithBom(reason.toStr())));
+        const char *pw = (strlen(password) == 0) ? nullptr : password;
+        const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : utf8ToUtf16WithBom(reason.toStr()));
 
         if (newSignatureFieldName.getLength() == 0) {
             // Create a random field name, it could be anything but 32 hex numbers should
@@ -449,7 +370,7 @@ int main(int argc, char *argv[])
         }
 
         // We don't provide a way to customize the UI from pdfsig for now
-        const bool success = doc->sign(std::string { argv[2] }, std::string { certNickname }, std::string { password }, newSignatureFieldName.copy(), /*page*/ 1,
+        const bool success = doc->sign(argv[2], certNickname, pw, newSignatureFieldName.copy(), /*page*/ 1,
                                        /*rect */ { 0, 0, 0, 0 }, /*signatureText*/ {}, /*signatureTextLeft*/ {}, /*fontSize */ 0, /*leftFontSize*/ 0,
                                        /*fontColor*/ {}, /*borderWidth*/ 0, /*borderColor*/ {}, /*backgroundColor*/ {}, rs.get(), /* location */ nullptr, /* image path */ "", ownerPW, userPW);
         return success ? 0 : 3;
@@ -495,12 +416,6 @@ int main(int argc, char *argv[])
             return 2;
         }
 
-        if (digestName != std::string("SHA256")) {
-            printf("Only digest SHA256 is supported at the moment\n");
-            printf("Please file a bug report if this is important for you\n");
-            return 2;
-        }
-
         bool getCertsError;
         // We need to call this otherwise NSS spins forever
         getAvailableSigningCertificates(&getCertsError);
@@ -518,33 +433,14 @@ int main(int argc, char *argv[])
         if (etsiCAdESdetached) {
             ffs->setSignatureType(ETSI_CAdES_detached);
         }
-        const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : std::make_unique<GooString>(utf8ToUtf16WithBom(reason.toStr())));
+        const char *pw = (strlen(password) == 0) ? nullptr : password;
+        const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : utf8ToUtf16WithBom(reason.toStr()));
         if (ffs->getNumWidgets() != 1) {
             printf("Unexpected number of widgets for the signature: %d\n", ffs->getNumWidgets());
             return 2;
         }
-#ifdef HAVE_GETTEXT
-        if (!noAppearance) {
-            setlocale(LC_ALL, "");
-            bindtextdomain("pdfsig", CMAKE_INSTALL_LOCALEDIR);
-            textdomain("pdfsig");
-        }
-#endif
         FormWidgetSignature *fws = static_cast<FormWidgetSignature *>(ffs->getWidget(0));
-        auto backend = CryptoSign::Factory::createActive();
-        auto sigHandler = backend->createSigningHandler(certNickname, HashAlgorithm::Sha256);
-        std::unique_ptr<X509CertificateInfo> certInfo = sigHandler->getCertificateInfo();
-        if (!certInfo) {
-            fprintf(stderr, "signDocument: error getting signature info\n");
-            return 2;
-        }
-        const std::string signerName = certInfo->getSubjectInfo().commonName;
-        const std::string timestamp = timeToStringWithFormat(nullptr, "%Y.%m.%d %H:%M:%S %z");
-        const AnnotColor blackColor(0, 0, 0);
-        const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str()) + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str()));
-        const auto gSignatureText = std::make_unique<GooString>((signatureText.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signatureText));
-        const auto gSignatureLeftText = std::make_unique<GooString>((signerName.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signerName));
-        const bool success = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
+        const bool success = fws->signDocument(argv[2], certNickname, digestName, pw, rs.get());
         return success ? 0 : 3;
     }
 
@@ -560,10 +456,7 @@ int main(int argc, char *argv[])
             for (unsigned int i = 0; i < sigCount; i++) {
                 const bool dumpingOk = dumpSignature(i, sigCount, signatures.at(i), fileName->c_str());
                 if (!dumpingOk) {
-                    // for now, do nothing. We have logged a message
-                    // to the user before returning false in dumpSignature
-                    // and it is possible to have "holes" in the signatures
-                    continue;
+                    return 3;
                 }
             }
             return 0;
@@ -573,16 +466,6 @@ int main(int argc, char *argv[])
     } else {
         printf("File '%s' does not contain any signatures\n", fileName->c_str());
         return 2;
-    }
-    std::unordered_map<int, SignatureInfo *> signatureInfos;
-    for (unsigned int i = 0; i < sigCount; i++) {
-        // Let's start the signature check first for signatures.
-        // we can always wait for completion later
-        FormFieldSignature *ffs = signatures.at(i);
-        if (ffs->getSignatureType() == unsigned_signature_field) {
-            continue;
-        }
-        signatureInfos[i] = ffs->validateSignatureAsync(!dontVerifyCert, false, -1 /* now */, !noOCSPRevocationCheck, useAIACertFetch, {});
     }
 
     for (unsigned int i = 0; i < sigCount; i++) {
@@ -599,32 +482,31 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        const SignatureInfo *sig_info = signatureInfos[i];
-        CertificateValidationStatus certificateStatus = ffs->validateSignatureResult();
-        printf("  - Signer Certificate Common Name: %s\n", sig_info->getSignerName().c_str());
-        printf("  - Signer full Distinguished Name: %s\n", sig_info->getSubjectDN().c_str());
+        const SignatureInfo *sig_info = ffs->validateSignature(!dontVerifyCert, false, -1 /* now */, !noOCSPRevocationCheck, useAIACertFetch);
+        printf("  - Signer Certificate Common Name: %s\n", sig_info->getSignerName());
+        printf("  - Signer full Distinguished Name: %s\n", sig_info->getSubjectDN());
         printf("  - Signing Time: %s\n", time_str = getReadableTime(sig_info->getSigningTime()));
         printf("  - Signing Hash Algorithm: ");
         switch (sig_info->getHashAlgorithm()) {
-        case HashAlgorithm::Md2:
+        case HASH_AlgMD2:
             printf("MD2\n");
             break;
-        case HashAlgorithm::Md5:
+        case HASH_AlgMD5:
             printf("MD5\n");
             break;
-        case HashAlgorithm::Sha1:
+        case HASH_AlgSHA1:
             printf("SHA1\n");
             break;
-        case HashAlgorithm::Sha256:
+        case HASH_AlgSHA256:
             printf("SHA-256\n");
             break;
-        case HashAlgorithm::Sha384:
+        case HASH_AlgSHA384:
             printf("SHA-384\n");
             break;
-        case HashAlgorithm::Sha512:
+        case HASH_AlgSHA512:
             printf("SHA-512\n");
             break;
-        case HashAlgorithm::Sha224:
+        case HASH_AlgSHA224:
             printf("SHA-224\n");
             break;
         default:
@@ -660,7 +542,7 @@ int main(int argc, char *argv[])
         if (sig_info->getSignatureValStatus() != SIGNATURE_VALID || dontVerifyCert) {
             continue;
         }
-        printf("  - Certificate Validation: %s\n", getReadableCertState(certificateStatus));
+        printf("  - Certificate Validation: %s\n", getReadableCertState(sig_info->getCertificateValStatus()));
     }
 
     return 0;

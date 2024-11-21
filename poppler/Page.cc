@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2005 Jeff Muizelaar <jeff@infidigm.net>
-// Copyright (C) 2005-2013, 2016-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2013, 2016-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006-2008 Pino Toscano <pino@kde.org>
 // Copyright (C) 2006 Nickolay V. Shmyrev <nshmyrev@yandex.ru>
 // Copyright (C) 2006 Scott Turner <scotty1024@mac.com>
@@ -27,7 +27,7 @@
 // Copyright (C) 2012, 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013, 2014 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2013 Jason Crain <jason@aquaticape.us>
-// Copyright (C) 2013, 2017, 2023 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2015 Philipp Reinkemeier <philipp.reinkemeier@offis.de>
 // Copyright (C) 2018, 2019 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
@@ -251,7 +251,7 @@ bool PageAttrs::readBox(Dict *dict, const char *key, PDFRectangle *box)
 
 #define pageLocker() const std::scoped_lock locker(mutex)
 
-Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *attrsA, Form *form) : pageRef(pageRefA)
+Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *attrsA, Form *form)
 {
     ok = true;
     doc = docA;
@@ -259,9 +259,9 @@ Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *a
     num = numA;
     duration = -1;
     annots = nullptr;
-    structParents = -1;
 
     pageObj = std::move(pageDict);
+    pageRef = pageRefA;
 
     // get attributes
     attrs = attrsA;
@@ -280,14 +280,6 @@ Page::Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *a
         error(errSyntaxError, -1, "Page duration object (page {0:d}) is wrong type ({1:s})", num, tmp.getTypeName());
     } else if (tmp.isNum()) {
         duration = tmp.getNum();
-    }
-
-    // structParents
-    const Object &tmp2 = pageObj.dictLookup("StructParents");
-    if (!(tmp2.isInt() || tmp2.isNull())) {
-        error(errSyntaxError, -1, "Page StructParents object (page {0:d}) is wrong type ({1:s})", num, tmp2.getTypeName());
-    } else if (tmp2.isInt()) {
-        structParents = tmp2.getInt();
     }
 
     // annotations
@@ -422,14 +414,8 @@ Annots *Page::getAnnots(XRef *xrefA)
     return annots;
 }
 
-bool Page::addAnnot(Annot *annot)
+void Page::addAnnot(Annot *annot)
 {
-    if (unlikely(xref->getEntry(pageRef.num)->type == xrefEntryFree)) {
-        // something very wrong happened if we're here
-        error(errInternal, -1, "Can not addAnnot to page with an invalid ref");
-        return false;
-    }
-
     const Ref annotRef = annot->getRef();
 
     // Make sure we have annots before adding the new one
@@ -477,8 +463,6 @@ bool Page::addAnnot(Annot *annot)
             addAnnot(annotPopup);
         }
     }
-
-    return true;
 }
 
 void Page::removeAnnot(Annot *annot)
@@ -506,6 +490,7 @@ void Page::removeAnnot(Annot *annot)
         }
         annots->removeAnnot(annot); // Gracefully fails on popup windows
         annArray.arrayRemove(idx);
+        xref->removeIndirectObject(annotRef);
 
         if (annotsObj.isRef()) {
             xref->setModifiedObject(&annArray, annotsObj.getRef());
@@ -514,9 +499,6 @@ void Page::removeAnnot(Annot *annot)
         }
     }
     annot->removeReferencedObjects(); // Note: Might recurse in removeAnnot again
-    if (annArray.isArray()) {
-        xref->removeIndirectObject(annotRef);
-    }
     annot->setPage(0, false);
 }
 

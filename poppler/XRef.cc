@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Dan Sheridan <dan.sheridan@postman.org.uk>
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
-// Copyright (C) 2006, 2008, 2010, 2012-2014, 2016-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008, 2010, 2012-2014, 2016-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007-2008 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2007 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009, 2010 Ilya Gorenbein <igorenbein@finjan.com>
@@ -32,10 +32,6 @@
 // Copyright (C) 2010 William Bader <william@newspapersystems.com>
 // Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright (C) 2023 Ilaï Deutel <idtl@google.com>
-// Copyright (C) 2023 Even Rouault <even.rouault@spatialys.com>
-// Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -257,11 +253,9 @@ XRef::XRef() : objStrs { 5 }
     permFlags = defPermFlags;
     ownerPasswordOk = false;
     rootNum = -1;
-    rootGen = -1;
     strOwner = false;
     xrefReconstructed = false;
     encAlgorithm = cryptNone;
-    keyLength = 0;
 }
 
 XRef::XRef(const Object *trailerDictA) : XRef {}
@@ -421,34 +415,22 @@ XRef *XRef::copy() const
 int XRef::reserve(int newSize)
 {
     if (newSize > capacity) {
-        int newCapacity = 1024;
-        if (capacity) {
-            if (capacity <= INT_MAX / 2) {
-                newCapacity = capacity * 2;
-            } else {
-                newCapacity = newSize;
-            }
+
+        int realNewSize;
+        for (realNewSize = capacity ? 2 * capacity : 1024; newSize > realNewSize && realNewSize > 0; realNewSize <<= 1) {
+            ;
         }
-        while (newSize > newCapacity) {
-            if (newCapacity > INT_MAX / 2) {
-                std::fputs("Too large XRef size\n", stderr);
-                return 0;
-            }
-            newCapacity *= 2;
-        }
-        if (newCapacity >= INT_MAX / (int)sizeof(XRefEntry)) {
-            std::fputs("Too large XRef size\n", stderr);
+        if ((realNewSize < 0) || (realNewSize >= INT_MAX / (int)sizeof(XRefEntry))) {
             return 0;
         }
 
-        void *p = grealloc(entries, newCapacity * sizeof(XRefEntry),
-                           /* checkoverflow=*/true);
+        void *p = greallocn_checkoverflow(entries, realNewSize, sizeof(XRefEntry));
         if (p == nullptr) {
             return 0;
         }
 
         entries = (XRefEntry *)p;
-        capacity = newCapacity;
+        capacity = realNewSize;
     }
 
     return capacity;
@@ -937,7 +919,7 @@ bool XRef::constructXRef(bool *wasReconstructed, bool needCatalogDict)
                 Object newTrailerDict = parser->getObj();
                 if (newTrailerDict.isDict()) {
                     const Object &obj = newTrailerDict.dictLookupNF("Root");
-                    if (obj.isRef() && (!gotRoot || !needCatalogDict)) {
+                    if (obj.isRef() && (!gotRoot || !needCatalogDict) && rootNum != obj.getRefNum()) {
                         rootNum = obj.getRefNum();
                         rootGen = obj.getRefGen();
                         trailerDict = newTrailerDict.copy();
@@ -1188,16 +1170,6 @@ Object XRef::fetch(int num, int gen, int recursion, Goffset *endPos)
     Object obj1, obj2, obj3;
 
     xrefLocker();
-
-    const Ref ref = { num, gen };
-
-    if (!refsBeingFetched.insert(ref)) {
-        return Object(objNull);
-    }
-
-    // Will remove ref from refsBeingFetched once it's destroyed, i.e. the function returns
-    RefRecursionCheckerRemover remover(refsBeingFetched, ref);
-
     // check for bogus ref - this can happen in corrupted PDF files
     if (num < 0 || num >= size) {
         goto err;
@@ -1453,9 +1425,6 @@ void XRef::setModifiedObject(const Object *o, Ref r)
         return;
     }
     XRefEntry *e = getEntry(r.num);
-    if (unlikely(e->type == xrefEntryFree)) {
-        error(errInternal, -1, "XRef::setModifiedObject on ref: {0:d}, {1:d} that is marked as free. This will cause a memory leak\n", r.num, r.gen);
-    }
     e->obj = o->copy();
     e->setFlag(XRefEntry::Updated, true);
     setModified();
@@ -1513,24 +1482,17 @@ void XRef::removeIndirectObject(Ref r)
     setModified();
 }
 
-Ref XRef::addStreamObject(Dict *dict, char *buffer, const Goffset bufferSize, StreamCompression compression)
+Ref XRef::addStreamObject(Dict *dict, char *buffer, const Goffset bufferSize)
 {
     dict->add("Length", Object((int)bufferSize));
     AutoFreeMemStream *stream = new AutoFreeMemStream(buffer, 0, bufferSize, Object(dict));
     stream->setFilterRemovalForbidden(true);
-    switch (compression) {
-    case StreamCompression::None:;
-        break;
-    case StreamCompression::Compress:
-        stream->getDict()->add("Filter", Object(objName, "FlateDecode"));
-        break;
-    }
     return addIndirectObject(Object((Stream *)stream));
 }
 
-Ref XRef::addStreamObject(Dict *dict, uint8_t *buffer, const Goffset bufferSize, StreamCompression compression)
+Ref XRef::addStreamObject(Dict *dict, uint8_t *buffer, const Goffset bufferSize)
 {
-    return addStreamObject(dict, (char *)buffer, bufferSize, compression);
+    return addStreamObject(dict, (char *)buffer, bufferSize);
 }
 
 void XRef::writeXRef(XRef::XRefWriter *writer, bool writeAllEntries)

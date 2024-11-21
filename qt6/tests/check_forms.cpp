@@ -1,4 +1,4 @@
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 #include <poppler-qt6.h>
 #include <poppler-form.h>

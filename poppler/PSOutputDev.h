@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Martin Kretzschmar <martink@gnome.org>
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2006-2008, 2012, 2013, 2015, 2017-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2008, 2012, 2013, 2015, 2017-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007 Brad Hards <bradh@kde.org>
 // Copyright (C) 2009-2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2009 Till Kamppeter <till.kamppeter@gmail.com>
@@ -27,10 +27,9 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2018, 2020 Philipp Knechtges <philipp-dev@knechtges.com>
-// Copyright (C) 2019, 2023, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -287,7 +286,10 @@ public:
         xScale0 = x;
         yScale0 = y;
     }
-    void setRotate(int rotateA) { rotate0 = rotateA; }
+    void setRotate(int rotateA)
+    {
+        rotate0 = rotateA;
+    }
     void setClip(double llx, double lly, double urx, double ury)
     {
         clipLLX0 = llx;
@@ -305,45 +307,144 @@ public:
         overlayCbk = cbk;
         overlayCbkData = data;
     }
-    void setDisplayText(bool display) { displayText = display; }
+    void setDisplayText(bool display)
+    {
+        displayText = display;
+    }
 
-    void setPSCenter(bool center) { psCenter = center; }
-    void setPSExpandSmaller(bool expand) { psExpandSmaller = expand; }
-    void setPSShrinkLarger(bool shrink) { psShrinkLarger = shrink; }
-    void setOverprintPreview(bool overprintPreviewA) { overprintPreview = overprintPreviewA; }
-    void setRasterAntialias(bool a) { rasterAntialias = a; }
-    void setForceRasterize(PSForceRasterize f) { forceRasterize = f; }
-    void setRasterResolution(double r) { rasterResolution = r; }
+    void setPSCenter(bool center)
+    {
+        psCenter = center;
+    }
+    void setPSExpandSmaller(bool expand)
+    {
+        psExpandSmaller = expand;
+    }
+    void setPSShrinkLarger(bool shrink)
+    {
+        psShrinkLarger = shrink;
+    }
+    void setOverprintPreview(bool overprintPreviewA)
+    {
+        overprintPreview = overprintPreviewA;
+    }
+    void setRasterAntialias(bool a)
+    {
+        rasterAntialias = a;
+    }
+    void setForceRasterize(PSForceRasterize f)
+    {
+        forceRasterize = f;
+    }
+    void setRasterResolution(double r)
+    {
+        rasterResolution = r;
+    }
     void setRasterMono(bool b)
     {
         processColorFormat = splashModeMono8;
         processColorFormatSpecified = true;
     }
 
-    void setUncompressPreloadedImages(bool b) { uncompressPreloadedImages = b; }
+    void setUncompressPreloadedImages(bool b)
+    {
+        uncompressPreloadedImages = b;
+    }
 
-    bool getEmbedType1() const { return embedType1; }
-    bool getEmbedTrueType() const { return embedTrueType; }
-    bool getEmbedCIDPostScript() const { return embedCIDPostScript; }
-    bool getEmbedCIDTrueType() const { return embedCIDTrueType; }
-    bool getFontPassthrough() const { return fontPassthrough; }
-    bool getOptimizeColorSpace() const { return optimizeColorSpace; }
-    bool getPassLevel1CustomColor() const { return passLevel1CustomColor; }
-    bool getEnableLZW() const { return enableLZW; };
-    bool getEnableFlate() const { return enableFlate; }
-    void setEmbedType1(bool b) { embedType1 = b; }
-    void setEmbedTrueType(bool b) { embedTrueType = b; }
-    void setEmbedCIDPostScript(bool b) { embedCIDPostScript = b; }
-    void setEmbedCIDTrueType(bool b) { embedCIDTrueType = b; }
-    void setFontPassthrough(bool b) { fontPassthrough = b; }
-    void setOptimizeColorSpace(bool b) { optimizeColorSpace = b; }
-    void setPassLevel1CustomColor(bool b) { passLevel1CustomColor = b; }
-    void setPreloadImagesForms(bool b) { preloadImagesForms = b; }
-    void setGenerateOPI(bool b) { generateOPI = b; }
-    void setUseASCIIHex(bool b) { useASCIIHex = b; }
-    void setUseBinary(bool b) { useBinary = b; }
-    void setEnableLZW(bool b) { enableLZW = b; }
-    void setEnableFlate(bool b) { enableFlate = b; }
+    bool getEmbedType1() const
+    {
+        return embedType1;
+    }
+    bool getEmbedTrueType() const
+    {
+        return embedTrueType;
+    }
+    bool getEmbedCIDPostScript() const
+    {
+        return embedCIDPostScript;
+    }
+    bool getEmbedCIDTrueType() const
+    {
+        return embedCIDTrueType;
+    }
+    bool getFontPassthrough() const
+    {
+        return fontPassthrough;
+    }
+    bool getOptimizeColorSpace() const
+    {
+        return optimizeColorSpace;
+    }
+    bool getPassLevel1CustomColor() const
+    {
+        return passLevel1CustomColor;
+    }
+    bool getEnableLZW() const
+    {
+        return enableLZW;
+    };
+    bool getEnableFlate() const
+#ifdef ENABLE_ZLIB
+    {
+        return enableFlate;
+    }
+#else
+    {
+        return false;
+    }
+#endif
+    void setEmbedType1(bool b)
+    {
+        embedType1 = b;
+    }
+    void setEmbedTrueType(bool b)
+    {
+        embedTrueType = b;
+    }
+    void setEmbedCIDPostScript(bool b)
+    {
+        embedCIDPostScript = b;
+    }
+    void setEmbedCIDTrueType(bool b)
+    {
+        embedCIDTrueType = b;
+    }
+    void setFontPassthrough(bool b)
+    {
+        fontPassthrough = b;
+    }
+    void setOptimizeColorSpace(bool b)
+    {
+        optimizeColorSpace = b;
+    }
+    void setPassLevel1CustomColor(bool b)
+    {
+        passLevel1CustomColor = b;
+    }
+    void setPreloadImagesForms(bool b)
+    {
+        preloadImagesForms = b;
+    }
+    void setGenerateOPI(bool b)
+    {
+        generateOPI = b;
+    }
+    void setUseASCIIHex(bool b)
+    {
+        useASCIIHex = b;
+    }
+    void setUseBinary(bool b)
+    {
+        useBinary = b;
+    }
+    void setEnableLZW(bool b)
+    {
+        enableLZW = b;
+    }
+    void setEnableFlate(bool b)
+    {
+        enableFlate = b;
+    }
 
     void setProcessColorFormat(SplashColorMode format)
     {
@@ -352,16 +453,6 @@ public:
     }
 
 private:
-    struct PSOutPaperSize
-    {
-        PSOutPaperSize() = default;
-        PSOutPaperSize(std::string &&nameA, int wA, int hA) : name(nameA), w(wA), h(hA) { }
-        ~PSOutPaperSize() = default;
-        PSOutPaperSize &operator=(const PSOutPaperSize &) = delete;
-        std::string name;
-        int w, h;
-    };
-
     void init(FoFiOutputFunc outputFuncA, void *outputStreamA, PSFileType fileTypeA, char *psTitleA, PDFDoc *doc, const std::vector<int> &pages, PSOutMode modeA, int imgLLXA, int imgLLYA, int imgURXA, int imgURYA, bool manualCtrlA,
               int paperWidthA, int paperHeightA, bool noCropA, bool duplexA, PSLevel levelA);
     void postInit();
@@ -403,7 +494,7 @@ private:
     void opiTransform(GfxState *state, double x0, double y0, double *x1, double *y1);
 #endif
     void cvtFunction(const Function *func, bool invertPSFunction = false);
-    static std::string filterPSName(const std::string &name);
+    GooString *filterPSName(const std::string &name);
 
     // Write the document-level setup.
     void writeDocSetup(Catalog *catalog, const std::vector<int> &pageList, bool duplexA);
@@ -411,11 +502,11 @@ private:
     void writePSChar(char c);
     void writePS(const char *s);
     void writePSBuf(const char *s, int len);
-    void writePSFmt(const char *fmt, ...) GOOSTRING_FORMAT;
+    void writePSFmt(const char *fmt, ...);
     void writePSString(const std::string &s);
     void writePSName(const char *s);
     GooString *filterPSLabel(GooString *label, bool *needParens = nullptr);
-    void writePSTextLine(const std::string &s);
+    void writePSTextLine(const GooString *s);
 
     PSLevel level; // PostScript level (1, 2, separation)
     PSOutMode mode; // PostScript mode (PS, EPS, form)
@@ -449,7 +540,9 @@ private:
     PDFDoc *doc;
     XRef *xref; // the xref table for this PDF file
 
-    std::vector<Ref> fontIDs; // list of object IDs of all used fonts
+    Ref *fontIDs; // list of object IDs of all used fonts
+    int fontIDLen; // number of entries in fontIDs array
+    int fontIDSize; // size of fontIDs array
     std::set<int> resourceIDs; // list of object IDs of objects containing Resources we've already set up
     std::unordered_set<std::string> fontNames; // all used font names
     std::unordered_map<std::string, int> perFontMaxValidGlyph; // max valid glyph of each font
@@ -472,8 +565,8 @@ private:
     int numTilingPatterns; // current number of nested tiling patterns
     int nextFunc; // next unique number to use for a function
 
-    std::vector<PSOutPaperSize> paperSizes; // list of used paper sizes, if paperMatch
-                                            //   is true
+    std::vector<PSOutPaperSize *> *paperSizes; // list of used paper sizes, if paperMatch
+                                               //   is true
     std::map<int, int> pagePaperSize; // page num to paperSize entry mapping
     double tx0, ty0; // global translation
     double xScale0, yScale0; // global scaling

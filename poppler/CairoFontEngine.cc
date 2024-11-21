@@ -21,7 +21,7 @@
 // Copyright (C) 2006, 2007, 2010, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2007 Koji Otani <sho@bbr.jp>
 // Copyright (C) 2008, 2009 Chris Wilson <chris@chris-wilson.co.uk>
-// Copyright (C) 2008, 2012, 2014, 2016, 2017, 2022-2024 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2008, 2012, 2014, 2016, 2017, 2022 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2009 Darren Kenny <darren.kenny@sun.com>
 // Copyright (C) 2010 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
 // Copyright (C) 2010 Jan Kümmel <jan+freedesktop@snorc.org>
@@ -33,9 +33,6 @@
 // Copyright (C) 2020 Michal <sudolskym@gmail.com>
 // Copyright (C) 2021, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2022 Marcel Fabian Krüger <tex@2krueger.de>
-// Copyright (C) 2023 Pablo Correa Gómez <ablocorrea@hotmail.com>
-// Copyright (C) 2023 Frederic Germain <frederic.germain@gmail.com>
-// Copyright (C) 2023 Ilia Kats <ilia-kats@gmx.net>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -408,20 +405,18 @@ static const cairo_user_data_key_t type3_font_key = { 0 };
 
 typedef struct _type3_font_info
 {
-    _type3_font_info(const std::shared_ptr<GfxFont> &fontA, PDFDoc *docA, CairoFontEngine *fontEngineA, CairoOutputDev *outputDevA, Gfx *gfxA) : font(fontA), doc(docA), fontEngine(fontEngineA), outputDev(outputDevA), gfx(gfxA) { }
+    _type3_font_info(const std::shared_ptr<GfxFont> &fontA, PDFDoc *docA, CairoFontEngine *fontEngineA, bool printingA, XRef *xrefA) : font(fontA), doc(docA), fontEngine(fontEngineA), printing(printingA), xref(xrefA) { }
 
     std::shared_ptr<GfxFont> font;
     PDFDoc *doc;
     CairoFontEngine *fontEngine;
-    CairoOutputDev *outputDev;
-    Gfx *gfx;
+    bool printing;
+    XRef *xref;
 } type3_font_info_t;
 
 static void _free_type3_font_info(void *closure)
 {
     type3_font_info_t *info = (type3_font_info_t *)closure;
-    delete info->gfx;
-    delete info->outputDev;
     delete info;
 }
 
@@ -444,15 +439,17 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
 {
     Dict *charProcs;
     Object charProc;
+    CairoOutputDev *output_dev;
     cairo_matrix_t matrix, invert_y_axis;
     const double *mat;
     double wx, wy;
+    PDFRectangle box;
     type3_font_info_t *info;
-    Gfx *gfx;
     cairo_status_t status;
 
     info = (type3_font_info_t *)cairo_font_face_get_user_data(cairo_scaled_font_get_font_face(scaled_font), &type3_font_key);
 
+    Dict *resDict = std::static_pointer_cast<Gfx8BitFont>(info->font)->getResources();
     charProcs = std::static_pointer_cast<Gfx8BitFont>(info->font)->getCharProcs();
     if (!charProcs) {
         return CAIRO_STATUS_USER_FONT_ERROR;
@@ -473,19 +470,19 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
     cairo_matrix_multiply(&matrix, &matrix, &invert_y_axis);
     cairo_transform(cr, &matrix);
 
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-    cairo_set_source(cr, cairo_user_scaled_font_get_foreground_marker(scaled_font));
-#endif
-
-    CairoOutputDev *output_dev = info->outputDev;
+    output_dev = new CairoOutputDev();
     output_dev->setCairo(cr);
+    output_dev->setPrinting(info->printing);
 
-    gfx = info->gfx;
-    gfx->saveState();
-
+    mat = info->font->getFontBBox();
+    box.x1 = mat[0];
+    box.y1 = mat[1];
+    box.x2 = mat[2];
+    box.y2 = mat[3];
+    auto gfx = std::make_unique<Gfx>(info->doc, output_dev, resDict, &box, nullptr);
     output_dev->startDoc(info->doc, info->fontEngine);
     output_dev->startType3Render(gfx->getState(), gfx->getXRef());
-    output_dev->setType3RenderType(color ? CairoOutputDev::Type3RenderColor : CairoOutputDev::Type3RenderMask);
+    output_dev->setInType3Char(true);
     charProc = charProcs->getVal(glyph);
     if (!charProc.isStream()) {
         return CAIRO_STATUS_USER_FONT_ERROR;
@@ -513,7 +510,6 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
         metrics->width = bbox[2] - bbox[0];
         metrics->height = bbox[3] - bbox[1];
     }
-    gfx->restoreState();
 
     status = CAIRO_STATUS_SUCCESS;
 
@@ -524,10 +520,12 @@ static cairo_status_t _render_type3_glyph(cairo_scaled_font_t *scaled_font, unsi
         status = CAIRO_STATUS_USER_FONT_NOT_IMPLEMENTED;
     }
 
+    delete output_dev;
+
     return status;
 }
 
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 17, 6)
 static cairo_status_t _render_type3_color_glyph(cairo_scaled_font_t *scaled_font, unsigned long glyph, cairo_t *cr, cairo_text_extents_t *metrics)
 {
     return _render_type3_glyph(scaled_font, glyph, cr, metrics, true);
@@ -543,33 +541,20 @@ CairoType3Font *CairoType3Font::create(const std::shared_ptr<GfxFont> &gfxFont, 
 {
     std::vector<int> codeToGID;
     char *name;
-    const double *mat;
 
     Dict *charProcs = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getCharProcs();
     Ref ref = *gfxFont->getID();
     cairo_font_face_t *font_face = cairo_user_font_face_create();
     cairo_user_font_face_set_init_func(font_face, _init_type3_glyph);
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 17, 6)
     // When both callbacks are set, Cairo will call the color glyph
     // callback first.  If that returns NOT_IMPLEMENTED, Cairo will
     // then call the non-color glyph callback.
     cairo_user_font_face_set_render_color_glyph_func(font_face, _render_type3_color_glyph);
 #endif
     cairo_user_font_face_set_render_glyph_func(font_face, _render_type3_noncolor_glyph);
+    type3_font_info_t *info = new type3_font_info_t(gfxFont, doc, fontEngine, printing, xref);
 
-    CairoOutputDev *output_dev = new CairoOutputDev();
-    output_dev->setPrinting(printing);
-
-    Dict *resDict = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getResources();
-    mat = gfxFont->getFontBBox();
-    PDFRectangle box;
-    box.x1 = mat[0];
-    box.y1 = mat[1];
-    box.x2 = mat[2];
-    box.y2 = mat[3];
-    Gfx *gfx = new Gfx(doc, output_dev, resDict, &box, nullptr);
-
-    type3_font_info_t *info = new type3_font_info_t(gfxFont, doc, fontEngine, output_dev, gfx);
     cairo_font_face_set_user_data(font_face, &type3_font_key, (void *)info, _free_type3_font_info);
 
     char **enc = std::static_pointer_cast<Gfx8BitFont>(gfxFont)->getEncoding();

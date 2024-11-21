@@ -4,10 +4,9 @@
  * Copyright (C) 2016 Jakub Alba <jakubalba@gmail.com>
  * Copyright (C) 2018, 2019, 2021, 2022 Marek Kasik <mkasik@redhat.com>
  * Copyright (C) 2019 Masamichi Hosoda <trueroad@trueroad.jp>
- * Copyright (C) 2019, 2021, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2020, 2022 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2021 André Guerreiro <aguerreiro1985@gmail.com>
- * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,7 +56,6 @@
 #    include <PDFDocEncoding.h>
 #    include <OptionalContent.h>
 #    include <ViewerPreferences.h>
-#    include "UTF.h"
 #endif
 
 #include "poppler.h"
@@ -1099,9 +1097,9 @@ char *_poppler_goo_string_to_utf8(const GooString *s)
 
     char *result;
 
-    if (hasUnicodeByteOrderMark(s->toStr())) {
+    if (s->hasUnicodeMarker()) {
         result = g_convert(s->c_str() + 2, s->getLength() - 2, "UTF-8", "UTF-16BE", nullptr, nullptr, nullptr);
-    } else if (hasUnicodeByteOrderMarkLE(s->toStr())) {
+    } else if (s->hasUnicodeMarkerLE()) {
         result = g_convert(s->c_str() + 2, s->getLength() - 2, "UTF-8", "UTF-16LE", nullptr, nullptr, nullptr);
     } else {
         int len;
@@ -1139,8 +1137,8 @@ static GooString *_poppler_goo_string_from_utf8(const gchar *src)
     GooString *result = new GooString(utf16, outlen);
     g_free(utf16);
 
-    if (!hasUnicodeByteOrderMark(result->toStr())) {
-        prependUnicodeByteOrderMark(result->toNonConstStr());
+    if (!result->hasUnicodeMarker()) {
+        result->prependUnicodeMarker();
     }
 
     return result;
@@ -2228,7 +2226,7 @@ void poppler_document_reset_form(PopplerDocument *document, GList *fields, gbool
 
         if (form) {
             for (iter = fields; iter != nullptr; iter = iter->next) {
-                list.emplace_back((char *)iter->data);
+                list.emplace_back(std::string((char *)iter->data));
             }
 
             form->reset(list, exclude_fields);
@@ -2774,8 +2772,7 @@ PopplerAction *poppler_index_iter_get_action(PopplerIndexIter *iter)
     item = (*iter->items)[iter->index];
     link_action = item->getAction();
 
-    const std::vector<Unicode> &itemTitle = item->getTitle();
-    title = unicode_to_char(itemTitle.data(), itemTitle.size());
+    title = unicode_to_char(item->getTitle(), item->getTitleLength());
 
     action = _poppler_action_new(iter->document, link_action, title);
     g_free(title);
@@ -3148,10 +3145,7 @@ PopplerFontInfo *poppler_font_info_new(PopplerDocument *document)
  *
  * <informalexample><programlisting>
  * font_info = poppler_font_info_new (document);
- * scanned_pages = 0;
- * while (scanned_pages <= poppler_document_get_n_pages(document)) {
- *         poppler_font_info_scan (font_info, 20, &fonts_iter);
- *         scanned_pages += 20;
+ * while (poppler_font_info_scan (font_info, 20, &fonts_iter)) {
  *         if (!fonts_iter)
  *                 continue; /<!-- -->* No fonts found in these 20 pages *<!-- -->/
  *         do {
@@ -3162,7 +3156,7 @@ PopplerFontInfo *poppler_font_info_new(PopplerDocument *document)
  * }
  * </programlisting></informalexample>
  *
- * Returns: %TRUE, if fonts were found
+ * Returns: %TRUE, if there are more fonts left to scan
  */
 gboolean poppler_font_info_scan(PopplerFontInfo *font_info, int n_pages, PopplerFontsIter **iter)
 {
@@ -3736,7 +3730,7 @@ gboolean _poppler_convert_pdf_date_to_gtime(const GooString *date, time_t *gdate
     gchar *date_string;
     gboolean retval;
 
-    if (hasUnicodeByteOrderMark(date->toStr())) {
+    if (date->hasUnicodeMarker()) {
         date_string = g_convert(date->c_str() + 2, date->getLength() - 2, "UTF-8", "UTF-16BE", nullptr, nullptr, nullptr);
     } else {
         date_string = g_strndup(date->c_str(), date->getLength());
@@ -3804,7 +3798,7 @@ GooString *_poppler_convert_date_time_to_pdf_date(GDateTime *datetime)
 {
     int offset_min;
     gchar *date_str;
-    std::string out_str;
+    std::unique_ptr<GooString> out_str;
 
     offset_min = g_date_time_get_utc_offset(datetime) / 1000000 / 60;
     date_str = g_date_time_format(datetime, "D:%Y%m%d%H%M%S");
@@ -3818,103 +3812,5 @@ GooString *_poppler_convert_date_time_to_pdf_date(GDateTime *datetime)
     }
 
     g_free(date_str);
-    return new GooString(std::move(out_str));
-}
-
-static void _poppler_sign_document_thread(GTask *task, PopplerDocument *document, const PopplerSigningData *signing_data, GCancellable *cancellable)
-{
-    const PopplerCertificateInfo *certificate_info;
-    const char *signing_data_signature_text;
-    const PopplerColor *font_color;
-    const PopplerColor *border_color;
-    const PopplerColor *background_color;
-    gboolean ret;
-
-    g_return_if_fail(POPPLER_IS_DOCUMENT(document));
-    g_return_if_fail(signing_data != nullptr);
-
-    signing_data_signature_text = poppler_signing_data_get_signature_text(signing_data);
-    if (signing_data_signature_text == nullptr) {
-        g_task_return_new_error(task, POPPLER_ERROR, POPPLER_ERROR_SIGNING, "No signature given");
-        return;
-    }
-
-    certificate_info = poppler_signing_data_get_certificate_info(signing_data);
-    if (certificate_info == nullptr) {
-        g_task_return_new_error(task, POPPLER_ERROR, POPPLER_ERROR_SIGNING, "Invalid certificate information provided for signing");
-        return;
-    }
-
-    PopplerPage *page = poppler_document_get_page(document, poppler_signing_data_get_page(signing_data));
-    if (page == nullptr) {
-        g_task_return_new_error(task, POPPLER_ERROR, POPPLER_ERROR_SIGNING, "Invalid page number selected for signing");
-        return;
-    }
-
-    font_color = poppler_signing_data_get_font_color(signing_data);
-    border_color = poppler_signing_data_get_border_color(signing_data);
-    background_color = poppler_signing_data_get_background_color(signing_data);
-
-    std::unique_ptr<GooString> signature_text = std::make_unique<GooString>(utf8ToUtf16WithBom(signing_data_signature_text));
-    std::unique_ptr<GooString> signature_text_left = std::make_unique<GooString>(utf8ToUtf16WithBom(poppler_signing_data_get_signature_text_left(signing_data)));
-    const auto field_partial_name = new GooString(poppler_signing_data_get_field_partial_name(signing_data), strlen(poppler_signing_data_get_field_partial_name(signing_data)));
-    const auto owner_pwd = std::optional<GooString>(poppler_signing_data_get_document_owner_password(signing_data));
-    const auto user_pwd = std::optional<GooString>(poppler_signing_data_get_document_user_password(signing_data));
-    const auto reason = std::unique_ptr<GooString>(poppler_signing_data_get_reason(signing_data) ? new GooString(poppler_signing_data_get_reason(signing_data), strlen(poppler_signing_data_get_reason(signing_data))) : nullptr);
-    const auto location = std::unique_ptr<GooString>(poppler_signing_data_get_location(signing_data) ? new GooString(poppler_signing_data_get_location(signing_data), strlen(poppler_signing_data_get_location(signing_data))) : nullptr);
-    const PopplerRectangle *rect = poppler_signing_data_get_signature_rectangle(signing_data);
-
-    ret = document->doc->sign(poppler_signing_data_get_destination_filename(signing_data), poppler_certificate_info_get_id((PopplerCertificateInfo *)certificate_info),
-                              poppler_signing_data_get_password(signing_data) ? poppler_signing_data_get_password(signing_data) : "", field_partial_name, poppler_signing_data_get_page(signing_data) + 1,
-                              PDFRectangle(rect->x1, rect->y1, rect->x2, rect->y2), *signature_text, *signature_text_left, poppler_signing_data_get_font_size(signing_data), poppler_signing_data_get_left_font_size(signing_data),
-                              std::make_unique<AnnotColor>(font_color->red, font_color->green, font_color->blue), poppler_signing_data_get_border_width(signing_data),
-                              std::make_unique<AnnotColor>(border_color->red, border_color->green, border_color->blue), std::make_unique<AnnotColor>(background_color->red, background_color->green, background_color->blue), reason.get(),
-                              location.get(), poppler_signing_data_get_image_path(signing_data) ? poppler_signing_data_get_image_path(signing_data) : "", owner_pwd, user_pwd);
-
-    g_task_return_boolean(task, ret);
-}
-
-/**
- * poppler_document_sign:
- * @document: a #PopplerDocument
- * @signing_data: a #PopplerSigningData
- * @cancellable: a #GCancellable
- * @callback: a #GAsyncReadyCallback
- * @user_data: user data used by callback function
- *
- * Sign #document using #signing_data.
- *
- * Since: 23.07.0
- **/
-void poppler_document_sign(PopplerDocument *document, const PopplerSigningData *signing_data, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data)
-{
-    GTask *task;
-
-    g_return_if_fail(POPPLER_IS_DOCUMENT(document));
-    g_return_if_fail(signing_data != nullptr);
-
-    task = g_task_new(document, cancellable, callback, user_data);
-    g_task_set_task_data(task, (void *)signing_data, nullptr);
-
-    g_task_run_in_thread(task, (GTaskThreadFunc)_poppler_sign_document_thread);
-    g_object_unref(task);
-}
-
-/**
- * poppler_document_sign_finish:
- * @document: a #PopplerDocument
- * @result: a #GAsyncResult
- * @error: a #GError
- *
- * Finish poppler_sign_document and get return status or error.
- *
- * Returns: %TRUE on successful signing a document, otherwise %FALSE and error is set.
- *
- * Since: 23.07.0
- **/
-gboolean poppler_document_sign_finish(PopplerDocument *document, GAsyncResult *result, GError **error)
-{
-    g_return_val_if_fail(g_task_is_valid(result, document), FALSE);
-
-    return g_task_propagate_boolean(G_TASK(result), error);
+    return out_str.release();
 }

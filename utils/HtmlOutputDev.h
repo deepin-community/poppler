@@ -25,8 +25,7 @@
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
-// Copyright (C) 2019, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -96,7 +95,7 @@ private:
     HtmlString *yxNext; // next string in y-major order
     HtmlString *xyNext; // next string in x-major order
     int fontpos;
-    std::unique_ptr<GooString> htext;
+    GooString *htext;
     int len; // length of text and xRight
     int size; // size of text and xRight arrays
     UnicodeTextDirection dir; // direction (left to right/right to left)
@@ -145,7 +144,7 @@ public:
     void AddLink(const HtmlLink &x) { links->AddLink(x); }
 
     // add an image to the current page
-    void addImage(std::string &&fname, GfxState *state);
+    void addImage(std::unique_ptr<GooString> &&fname, GfxState *state);
 
     // number of images on the current page
     int getNumImages() { return imgList.size(); }
@@ -295,7 +294,7 @@ private:
     int getOutlinePageNum(OutlineItem *item);
     void drawJpegImage(GfxState *state, Stream *str);
     void drawPngImage(GfxState *state, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool isMask = false);
-    std::string createImageFileName(const char *ext);
+    std::unique_ptr<GooString> createImageFileName(const char *ext);
 
     FILE *fContentsFrame;
     FILE *page; // html file

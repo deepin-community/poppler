@@ -1,5 +1,4 @@
-#include <QtTest/QTest>
-#include <QtCore/QTemporaryFile>
+#include <QtTest/QtTest>
 
 #include "Outline.h"
 #include "PDFDoc.h"
@@ -57,10 +56,10 @@ void TestInternalOutline::testCreateOutline()
 
 static std::string getTitle(const OutlineItem *item)
 {
-    const std::vector<Unicode> &u = item->getTitle();
+    const Unicode *u = item->getTitle();
     std::string s;
-    for (const auto &c : u) {
-        s.append(1, (char)(c));
+    for (int i = 0; i < item->getTitleLength(); i++) {
+        s.append(1, (char)u[i]);
     }
     return s;
 }

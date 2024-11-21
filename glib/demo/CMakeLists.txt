@@ -18,7 +18,6 @@ set(poppler_glib_demo_SRCS
   layers.c
   selections.c
   taggedstruct.c
-  signature.c
 )
 poppler_add_test(poppler-glib-demo BUILD_GTK_TESTS ${poppler_glib_demo_SRCS})
 

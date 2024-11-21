@@ -1,4 +1,4 @@
-libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
+libpoppler-qt5.so.1 libpoppler-qt5-1 #MINVER#
 * Build-Depends-Package: libpoppler-qt5-dev
  _ZN7Poppler10Annotation11setBoundaryERK6QRectF@Base 0.24.5
  _ZN7Poppler10Annotation11setContentsERK7QString@Base 0.24.5
@@ -55,15 +55,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler10LinkBrowseD0Ev@Base 0.24.5
  _ZN7Poppler10LinkBrowseD1Ev@Base 0.24.5
  _ZN7Poppler10LinkBrowseD2Ev@Base 0.24.5
- _ZN7Poppler11AsyncObject11qt_metacallEN11QMetaObject4CallEiPPv@Base 24.06.0
- _ZN7Poppler11AsyncObject11qt_metacastEPKc@Base 24.06.0
- _ZN7Poppler11AsyncObject16staticMetaObjectE@Base 24.06.0
- _ZN7Poppler11AsyncObject4doneEv@Base 24.06.0
- _ZN7Poppler11AsyncObjectC1Ev@Base 24.06.0
- _ZN7Poppler11AsyncObjectC2Ev@Base 24.06.0
- _ZN7Poppler11AsyncObjectD0Ev@Base 24.06.0
- _ZN7Poppler11AsyncObjectD1Ev@Base 24.06.0
- _ZN7Poppler11AsyncObjectD2Ev@Base 24.06.0
  _ZN7Poppler11LinkExecuteC1ERK6QRectFRK7QStringS6_@Base 0.24.5
  _ZN7Poppler11LinkExecuteC2ERK6QRectFRK7QStringS6_@Base 0.24.5
  _ZN7Poppler11LinkExecuteD0Ev@Base 0.24.5
@@ -95,7 +86,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler11PSConverter15setBottomMarginEi@Base 0.24.5
  _ZN7Poppler11PSConverter16setStrictMarginsEb@Base 0.24.5
  _ZN7Poppler11PSConverter17setForceRasterizeEb@Base 0.24.5
- _ZN7Poppler11PSConverter24setForceOverprintPreviewEb@Base 23.12.0
  _ZN7Poppler11PSConverter24setPageConvertedCallbackEPFviPvES1_@Base 0.24.5
  _ZN7Poppler11PSConverter7convertEv@Base 0.24.5
  _ZN7Poppler11PSConverter7setHDPIEd@Base 0.24.5
@@ -193,18 +183,11 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler13InkAnnotationD0Ev@Base 0.24.5
  _ZN7Poppler13InkAnnotationD1Ev@Base 0.24.5
  _ZN7Poppler13InkAnnotationD2Ev@Base 0.24.5
- _ZN7Poppler13LinkRenditionC1ERK6QRectFOSt10unique_ptrI14MediaRenditionSt14default_deleteIS5_EEiRK7QString3Ref@Base 24.08.0
  _ZN7Poppler13LinkRenditionC1ERK6QRectFP14MediaRenditioniRK7QStringRK3Ref@Base 0.24.5
- _ZN7Poppler13LinkRenditionC2ERK6QRectFOSt10unique_ptrI14MediaRenditionSt14default_deleteIS5_EEiRK7QString3Ref@Base 24.08.0
  _ZN7Poppler13LinkRenditionC2ERK6QRectFP14MediaRenditioniRK7QStringRK3Ref@Base 0.24.5
  _ZN7Poppler13LinkRenditionD0Ev@Base 0.24.5
  _ZN7Poppler13LinkRenditionD1Ev@Base 0.24.5
  _ZN7Poppler13LinkRenditionD2Ev@Base 0.24.5
- _ZN7Poppler13LinkResetFormC1EPNS_20LinkResetFormPrivateE@Base 24.08.0
- _ZN7Poppler13LinkResetFormC2EPNS_20LinkResetFormPrivateE@Base 24.08.0
- _ZN7Poppler13LinkResetFormD0Ev@Base 24.08.0
- _ZN7Poppler13LinkResetFormD1Ev@Base 24.08.0
- _ZN7Poppler13LinkResetFormD2Ev@Base 24.08.0
  _ZN7Poppler13hasNSSSupportEv@Base 21.06.0
  _ZN7Poppler14GeomAnnotation11setGeomTypeENS0_8GeomTypeE@Base 0.24.5
  _ZN7Poppler14GeomAnnotation17setGeomInnerColorERK6QColor@Base 0.24.5
@@ -253,9 +236,7 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler14LinkJavaScriptD0Ev@Base 0.24.5
  _ZN7Poppler14LinkJavaScriptD1Ev@Base 0.24.5
  _ZN7Poppler14LinkJavaScriptD2Ev@Base 0.24.5
- _ZN7Poppler14MediaRenditionC1EOSt10unique_ptrI14MediaRenditionSt14default_deleteIS2_EE@Base 24.08.0
  _ZN7Poppler14MediaRenditionC1EP14MediaRendition@Base 0.24.5
- _ZN7Poppler14MediaRenditionC2EOSt10unique_ptrI14MediaRenditionSt14default_deleteIS2_EE@Base 24.08.0
  _ZN7Poppler14MediaRenditionC2EP14MediaRendition@Base 0.24.5
  _ZN7Poppler14MediaRenditionD1Ev@Base 0.24.5
  _ZN7Poppler14MediaRenditionD2Ev@Base 0.24.5
@@ -314,7 +295,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler15FormFieldButtonD2Ev@Base 0.24.5
  _ZN7Poppler15FormFieldChoice13setEditChoiceERK7QString@Base 0.24.5
  _ZN7Poppler15FormFieldChoice17setCurrentChoicesERK5QListIiE@Base 0.24.5
- _ZN7Poppler15FormFieldChoice23setAppearanceChoiceTextERK7QString@Base 24.08.0
  _ZN7Poppler15FormFieldChoiceC1EPNS_12DocumentDataEP4PageP16FormWidgetChoice@Base 0.24.5
  _ZN7Poppler15FormFieldChoiceC2EPNS_12DocumentDataEP4PageP16FormWidgetChoice@Base 0.24.5
  _ZN7Poppler15FormFieldChoiceD0Ev@Base 0.24.5
@@ -389,7 +369,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler16WidgetAnnotationD1Ev@Base 0.24.5
  _ZN7Poppler16WidgetAnnotationD2Ev@Base 0.24.5
  _ZN7Poppler16unicodeToQStringEPKji@Base 0.71.0
- _ZN7Poppler16unicodeToQStringERKSt6vectorIjSaIjEE@Base 24.02.0
  _ZN7Poppler17FormFieldIconData7getDataERKNS_13FormFieldIconE@Base 0.81.0
  _ZN7Poppler18FormFieldSignatureC1EPNS_12DocumentDataEP4PageP19FormWidgetSignature@Base 0.57.0
  _ZN7Poppler18FormFieldSignatureC2EPNS_12DocumentDataEP4PageP19FormWidgetSignature@Base 0.57.0
@@ -480,7 +459,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler23SignatureValidationInfoD1Ev@Base 0.57.0
  _ZN7Poppler23SignatureValidationInfoD2Ev@Base 0.57.0
  _ZN7Poppler23SignatureValidationInfoaSERKS0_@Base 0.57.0
- _ZN7Poppler23activeCryptoSignBackendEv@Base 23.08.0
  _ZN7Poppler24FileAttachmentAnnotation15setEmbeddedFileEPNS_12EmbeddedFileE@Base 0.24.5
  _ZN7Poppler24FileAttachmentAnnotation15setFileIconNameERK7QString@Base 0.24.5
  _ZN7Poppler24FileAttachmentAnnotationC1ERK8QDomNode@Base 0.24.5
@@ -493,9 +471,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler24FileAttachmentAnnotationD1Ev@Base 0.24.5
  _ZN7Poppler24FileAttachmentAnnotationD2Ev@Base 0.24.5
  _ZN7Poppler25QStringToUnicodeGooStringERK7QString@Base 0.71.0
- _ZN7Poppler26setActiveCryptoSignBackendENS_17CryptoSignBackendE@Base 23.08.0
- _ZN7Poppler27availableCryptoSignBackendsEv@Base 23.08.0
- _ZN7Poppler27hasCryptoSignBackendFeatureENS_17CryptoSignBackendENS_24CryptoSignBackendFeatureE@Base 23.08.0
  _ZN7Poppler27isOverprintPreviewAvailableEv@Base 0.24.5
  _ZN7Poppler31getAvailableSigningCertificatesEv@Base 21.06.0
  _ZN7Poppler4LinkC1ERK6QRectF@Base 0.24.5
@@ -531,7 +506,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZN7Poppler8Document15linkDestinationERK7QString@Base 0.24.5
  _ZN7Poppler8Document15setCreationDateERK9QDateTime@Base 0.46.0
  _ZN7Poppler8Document16setRenderBackendENS0_13RenderBackendE@Base 0.24.5
- _ZN7Poppler8Document19applyResetFormsLinkERKNS_13LinkResetFormE@Base 24.08.0
  _ZN7Poppler8Document19setModificationDateERK9QDateTime@Base 0.46.0
  _ZN7Poppler8Document20optionalContentModelEv@Base 0.24.5
  _ZN7Poppler8Document22setColorDisplayProfileEPv@Base 0.24.5
@@ -620,7 +594,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZNK7Poppler10LinkAction8linkTypeEv@Base 0.24.5
  _ZNK7Poppler10LinkBrowse3urlEv@Base 0.24.5
  _ZNK7Poppler10LinkBrowse8linkTypeEv@Base 0.24.5
- _ZNK7Poppler11AsyncObject10metaObjectEv@Base 24.06.0
  _ZNK7Poppler11LinkExecute10parametersEv@Base 0.24.5
  _ZNK7Poppler11LinkExecute8fileNameEv@Base 0.24.5
  _ZNK7Poppler11LinkExecute8linkTypeEv@Base 0.24.5
@@ -695,7 +668,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZNK7Poppler13LinkRendition6scriptEv@Base 0.24.5
  _ZNK7Poppler13LinkRendition8linkTypeEv@Base 0.24.5
  _ZNK7Poppler13LinkRendition9renditionEv@Base 0.24.5
- _ZNK7Poppler13LinkResetForm8linkTypeEv@Base 24.08.0
  _ZNK7Poppler14GeomAnnotation14geomInnerColorEv@Base 0.24.5
  _ZNK7Poppler14GeomAnnotation5storeER8QDomNodeR12QDomDocument@Base 0.24.5
  _ZNK7Poppler14GeomAnnotation7subTypeEv@Base 0.24.5
@@ -750,7 +722,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZNK7Poppler15CaretAnnotation5storeER8QDomNodeR12QDomDocument@Base 0.24.5
  _ZNK7Poppler15CaretAnnotation7subTypeEv@Base 0.24.5
  _ZNK7Poppler15CertificateInfo10issuerInfoENS0_13EntityInfoKeyE@Base 0.81.0
- _ZNK7Poppler15CertificateInfo11keyLocationEv@Base 23.12.0
  _ZNK7Poppler15CertificateInfo11subjectInfoENS0_13EntityInfoKeyE@Base 0.81.0
  _ZNK7Poppler15CertificateInfo11validityEndEv@Base 0.81.0
  _ZNK7Poppler15CertificateInfo12isSelfSignedEv@Base 0.81.0
@@ -821,8 +792,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZNK7Poppler16WidgetAnnotation5storeER8QDomNodeR12QDomDocument@Base 0.24.5
  _ZNK7Poppler16WidgetAnnotation7subTypeEv@Base 0.24.5
  _ZNK7Poppler18FormFieldSignature13signatureTypeEv@Base 0.59.0
- _ZNK7Poppler18FormFieldSignature13validateAsyncENS0_15ValidateOptionsERK9QDateTime@Base 24.06.0
- _ZNK7Poppler18FormFieldSignature14validateResultEv@Base 24.06.0
  _ZNK7Poppler18FormFieldSignature4signERK7QStringRKNS_12PDFConverter16NewSignatureDataE@Base 22.02.0
  _ZNK7Poppler18FormFieldSignature4typeEv@Base 0.57.0
  _ZNK7Poppler18FormFieldSignature8validateENS0_15ValidateOptionsE@Base 0.57.0
@@ -918,7 +887,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZNK7Poppler8Document13textDirectionEv@Base 0.26.0
  _ZNK7Poppler8Document15colorRgbProfileEv@Base 0.24.5
  _ZNK7Poppler8Document15newFontIteratorEi@Base 0.24.5
- _ZNK7Poppler8Document16additionalActionENS0_29DocumentAdditionalActionsTypeE@Base 24.08.0
  _ZNK7Poppler8Document16hasEmbeddedFilesEv@Base 0.24.5
  _ZNK7Poppler8Document16modificationDateEv@Base 0.46.0
  _ZNK7Poppler8Document16okToPrintHighResEv@Base 0.24.5
@@ -987,11 +955,24 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZNK7Poppler9LinkSound6repeatEv@Base 0.24.5
  _ZNK7Poppler9LinkSound6volumeEv@Base 0.24.5
  _ZNK7Poppler9LinkSound8linkTypeEv@Base 0.24.5
+ _ZNSt15_Sp_counted_ptrIDnLN9__gnu_cxx12_Lock_policyE2EE10_M_disposeEv@Base 0.90.0
+ _ZNSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE10_M_destroyEv@Base 0.90.0
+ (optional=gccinternal)_ZNSt15_Sp_counted_ptrIDnLN9__gnu_cxx12_Lock_policyE2EE10_M_disposeEv@Base 0.90.0 20.09.0
+ (optional=gccinternal)_ZNSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE10_M_destroyEv@Base 0.90.0 20.09.0
+ (optional=gccinternal)_ZNSt5dequeIP8QPainterSaIS1_EE16_M_push_back_auxIJRKS1_EEEvDpOT_@Base 20.09.0
+ (optional=gccinternal)_ZNSt5dequeIP8QPainterSaIS1_EE17_M_reallocate_mapEjb@Base 22.02.0
+ (optional=gccinternal)_ZNSt5dequeIP8QPainterSaIS1_EE17_M_reallocate_mapEmb@Base 0.71.0
+ (optional=gccinternal)_ZNSt5dequeIPiSaIS0_EE16_M_push_back_auxIJRKS0_EEEvDpOT_@Base 0.71.0
+ (optional=gccinternal)_ZNSt6vectorISt10unique_ptrI8QPictureSt14default_deleteIS1_EESaIS4_EE17_M_default_appendEj@Base 22.02.0
+ (optional=gccinternal)_ZNSt6vectorISt10unique_ptrI8QPictureSt14default_deleteIS1_EESaIS4_EE17_M_default_appendEm@Base 0.71.0
+ (optional=gccinternal)_ZNSt6vectorIiSaIiEE17_M_default_appendEj@Base 22.02.0
+ (optional=gccinternal)_ZNSt6vectorIiSaIiEE17_M_default_appendEm@Base 0.71.0
+ (optional=gccinternal)_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJRKiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT_@Base 0.57.0
+ (optional=gccinternal)_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPKcEEvT_S8_St20forward_iterator_tag@Base 0.71.0
  _ZTI11QSharedData@Base 0.24.5
  _ZTIN7Poppler10AnnotationE@Base 0.24.5
  _ZTIN7Poppler10LinkActionE@Base 0.24.5
  _ZTIN7Poppler10LinkBrowseE@Base 0.24.5
- _ZTIN7Poppler11AsyncObjectE@Base 24.06.0
  _ZTIN7Poppler11LinkExecuteE@Base 0.24.5
  _ZTIN7Poppler11PSConverterE@Base 0.24.5
  _ZTIN7Poppler12LinkOCGStateE@Base 0.57.0
@@ -1000,7 +981,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZTIN7Poppler13FormFieldTextE@Base 0.24.5
  _ZTIN7Poppler13InkAnnotationE@Base 0.24.5
  _ZTIN7Poppler13LinkRenditionE@Base 0.24.5
- _ZTIN7Poppler13LinkResetFormE@Base 24.08.0
  _ZTIN7Poppler14GeomAnnotationE@Base 0.24.5
  _ZTIN7Poppler14LineAnnotationE@Base 0.24.5
  _ZTIN7Poppler14LinkAnnotationE@Base 0.24.5
@@ -1025,15 +1005,10 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZTIN7Poppler9FormFieldE@Base 0.24.5
  _ZTIN7Poppler9LinkMovieE@Base 0.24.5
  _ZTIN7Poppler9LinkSoundE@Base 0.24.5
- (arch=armel riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 24.06.0
- (arch=!armel !riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 24.06.0
- (arch=armel riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 24.06.0
- (arch=!armel !riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 24.06.0
  _ZTS11QSharedData@Base 0.24.5
  _ZTSN7Poppler10AnnotationE@Base 0.24.5
  _ZTSN7Poppler10LinkActionE@Base 0.24.5
  _ZTSN7Poppler10LinkBrowseE@Base 0.24.5
- _ZTSN7Poppler11AsyncObjectE@Base 24.06.0
  _ZTSN7Poppler11LinkExecuteE@Base 0.24.5
  _ZTSN7Poppler11PSConverterE@Base 0.24.5
  _ZTSN7Poppler12LinkOCGStateE@Base 0.57.0
@@ -1042,7 +1017,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZTSN7Poppler13FormFieldTextE@Base 0.24.5
  _ZTSN7Poppler13InkAnnotationE@Base 0.24.5
  _ZTSN7Poppler13LinkRenditionE@Base 0.24.5
- _ZTSN7Poppler13LinkResetFormE@Base 24.08.0
  _ZTSN7Poppler14GeomAnnotationE@Base 0.24.5
  _ZTSN7Poppler14LineAnnotationE@Base 0.24.5
  _ZTSN7Poppler14LinkAnnotationE@Base 0.24.5
@@ -1067,17 +1041,9 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZTSN7Poppler9FormFieldE@Base 0.24.5
  _ZTSN7Poppler9LinkMovieE@Base 0.24.5
  _ZTSN7Poppler9LinkSoundE@Base 0.24.5
- (arch=armel riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 24.06.0
- (arch=!armel !riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 24.06.0
- (arch=armel riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 24.06.0
- (arch=!armel !riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Base 24.06.0
- _ZTSSt19_Sp_make_shared_tag@Base 24.06.0
- (arch=armel riscv64)_ZTSSt23_Sp_counted_ptr_inplaceIN7Poppler11AsyncObjectESaIvELN9__gnu_cxx12_Lock_policyE1EE@Base 24.06.0
- (arch=!armel !riscv64)_ZTSSt23_Sp_counted_ptr_inplaceIN7Poppler11AsyncObjectESaIvELN9__gnu_cxx12_Lock_policyE2EE@Base 24.06.0
  _ZTVN7Poppler10AnnotationE@Base 0.24.5
  _ZTVN7Poppler10LinkActionE@Base 0.24.5
  _ZTVN7Poppler10LinkBrowseE@Base 0.24.5
- _ZTVN7Poppler11AsyncObjectE@Base 24.06.0
  _ZTVN7Poppler11LinkExecuteE@Base 0.24.5
  _ZTVN7Poppler11PSConverterE@Base 0.24.5
  _ZTVN7Poppler12LinkOCGStateE@Base 0.57.0
@@ -1086,7 +1052,6 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZTVN7Poppler13FormFieldTextE@Base 0.24.5
  _ZTVN7Poppler13InkAnnotationE@Base 0.24.5
  _ZTVN7Poppler13LinkRenditionE@Base 0.24.5
- _ZTVN7Poppler13LinkResetFormE@Base 24.08.0
  _ZTVN7Poppler14GeomAnnotationE@Base 0.24.5
  _ZTVN7Poppler14LineAnnotationE@Base 0.24.5
  _ZTVN7Poppler14LinkAnnotationE@Base 0.24.5
@@ -1111,4 +1076,3 @@ libpoppler-qt5.so.1 libpoppler-qt5-1t64 #MINVER#
  _ZTVN7Poppler9FormFieldE@Base 0.24.5
  _ZTVN7Poppler9LinkMovieE@Base 0.24.5
  _ZTVN7Poppler9LinkSoundE@Base 0.24.5
- _ZZNSt19_Sp_make_shared_tag5_S_tiEvE5__tag@Base 24.06.0

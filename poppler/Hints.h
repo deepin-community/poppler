@@ -39,6 +39,7 @@ public:
 
     int getPageObjectNum(int page);
     Goffset getPageOffset(int page);
+    std::vector<ByteRange> *getPageRanges(int page);
 
 private:
     void readTables(BaseStream *str, Linearization *linearization, XRef *xref, SecurityHandler *secHdlr);

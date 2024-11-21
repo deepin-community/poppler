@@ -1,4 +1,4 @@
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 #include <poppler-private.h>
 
@@ -31,7 +31,7 @@ void TestPageLabelInfo::testFromDecimal()
 void TestPageLabelInfo::testFromDecimalUnicode()
 {
     std::unique_ptr<GooString> str(Poppler::QStringToUnicodeGooString(QString::fromLocal8Bit("2342")));
-    const auto res = fromDecimal(str->toStr(), hasUnicodeByteOrderMark(str->toStr()));
+    const auto res = fromDecimal(str->toStr(), str->hasUnicodeMarker());
     QCOMPARE(res.first, 2342);
     QCOMPARE(res.second, true);
 }

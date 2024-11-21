@@ -17,13 +17,12 @@
  * Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-#include <QtTest/QTest>
+#include <QtTest/QtTest>
 
 #include <poppler-qt6.h>
 #include <poppler-private.h>
 
 #include <GlobalParams.h>
-#include "UTF.h"
 
 Q_DECLARE_METATYPE(GooString *)
 Q_DECLARE_METATYPE(Unicode *)
@@ -195,7 +194,7 @@ void TestStrings::check_QStringToUnicodeGooString()
         QVERIFY(goo->toStr().empty());
         QCOMPARE(goo->getLength(), 0);
     } else {
-        QVERIFY(hasUnicodeByteOrderMark(goo->toStr()));
+        QVERIFY(goo->hasUnicodeMarker());
         QCOMPARE(goo->getLength(), string.length() * 2 + 2);
         QCOMPARE(result, QByteArray::fromRawData(goo->c_str() + 2, goo->getLength() - 2));
     }

@@ -19,7 +19,6 @@
 // Copyright (C) 2012 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2020 Adam Reichold <adam.reichold@t-online.de>
-// Copyright (C) 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -54,11 +53,12 @@ void CDECL error(ErrorCategory category, Goffset pos, const char *msg, ...)
         return;
     }
     va_start(args, msg);
-    const std::string s = GooString::formatv(msg, args);
+    const std::unique_ptr<GooString> s = GooString::formatv(msg, args);
     va_end(args);
 
     GooString sanitized;
-    for (const char c : s) {
+    for (int i = 0; i < s->getLength(); ++i) {
+        const char c = s->getChar(i);
         if (c < (char)0x20 || c >= (char)0x7f) {
             sanitized.appendf("<{0:02x}>", c & 0xff);
         } else {

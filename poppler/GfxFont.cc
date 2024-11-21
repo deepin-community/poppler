@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2006, 2008-2010, 2012, 2014, 2015, 2017-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2006, 2008-2010, 2012, 2014, 2015, 2017-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
@@ -35,10 +35,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 LE GARREC Vincent <legarrec.vincent@gmail.com>
-// Copyright (C) 2021, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2023 Khaled Hosny <khaled@aliftype.com>
-// Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2021, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -210,25 +207,6 @@ std::unique_ptr<GfxFont> GfxFont::makeFont(XRef *xref, const char *tagA, Ref idA
     Object obj1 = fontDict->lookup("BaseFont");
     if (obj1.isName()) {
         name = obj1.getName();
-    }
-
-    // There is no BaseFont in Type 3 fonts, try fontDescriptor.FontName
-    if (!name) {
-        Object fontDesc = fontDict->lookup("FontDescriptor");
-        if (fontDesc.isDict()) {
-            Object obj2 = fontDesc.dictLookup("FontName");
-            if (obj2.isName()) {
-                name = obj2.getName();
-            }
-        }
-    }
-
-    // As a last resort try the Name key
-    if (!name) {
-        Object obj2 = fontDict->lookup("Name");
-        if (obj2.isName()) {
-            name = obj2.getName();
-        }
     }
 
     // get embedded font ID and font type
@@ -630,7 +608,7 @@ CharCodeToUnicode *GfxFont::readToUnicodeCMap(Dict *fontDict, int nBits, CharCod
     return ctu;
 }
 
-std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooString *substituteFontName)
+std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps)
 {
     SysFontType sysFontType;
     GooString *path, *base14Name;
@@ -679,7 +657,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
                 fontLoc.locType = gfxFontLocEmbedded;
                 fontLoc.fontType = type;
                 fontLoc.embFontID = embFontID;
-                return fontLoc;
+                return std::move(fontLoc); // std::move only required to please g++-7
             }
         }
     }
@@ -689,8 +667,8 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
         GfxFontLoc fontLoc;
         fontLoc.locType = gfxFontLocResident;
         fontLoc.fontType = fontType1;
-        fontLoc.path = name.value_or(std::string());
-        return fontLoc;
+        fontLoc.path = *name;
+        return std::move(fontLoc); // std::move only required to please g++-7
     }
 
     //----- PS resident Base-14 font
@@ -699,7 +677,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
         fontLoc.locType = gfxFontLocResident;
         fontLoc.fontType = fontType1;
         fontLoc.path = ((Gfx8BitFont *)this)->base14->base14Name;
-        return fontLoc;
+        return std::move(fontLoc); // std::move only required to please g++-7
     }
 
     //----- external font file (fontFile, fontDir)
@@ -712,7 +690,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
     //----- external font file for Base-14 font
     if (!ps && !isCIDFont() && ((Gfx8BitFont *)this)->base14) {
         base14Name = new GooString(((Gfx8BitFont *)this)->base14->base14Name);
-        if ((path = globalParams->findBase14FontFile(base14Name, this, substituteFontName))) {
+        if ((path = globalParams->findBase14FontFile(base14Name, this))) {
             if (std::optional<GfxFontLoc> fontLoc = getExternalFont(path, false)) {
                 delete base14Name;
                 return fontLoc;
@@ -722,7 +700,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
     }
 
     //----- system font
-    if ((path = globalParams->findSystemFontFile(this, &sysFontType, &fontNum, substituteFontName))) {
+    if ((path = globalParams->findSystemFontFile(this, &sysFontType, &fontNum))) {
         if (isCIDFont()) {
             if (sysFontType == sysFontTTF || sysFontType == sysFontTTC) {
                 GfxFontLoc fontLoc;
@@ -730,7 +708,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
                 fontLoc.fontType = fontCIDType2;
                 fontLoc.setPath(path);
                 fontLoc.fontNum = fontNum;
-                return fontLoc;
+                return std::move(fontLoc); // std::move only required to please g++-7
             }
         } else {
             GfxFontLoc fontLoc;
@@ -742,7 +720,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
                 fontLoc.fontType = fontType1;
                 fontLoc.fontNum = fontNum;
             }
-            return fontLoc;
+            return std::move(fontLoc); // std::move only required to please g++-7
         }
         delete path;
     }
@@ -771,7 +749,7 @@ std::optional<GfxFontLoc> GfxFont::locateFont(XRef *xref, PSOutputDev *ps, GooSt
             fontLoc.fontType = fontType1;
             fontLoc.path = substName;
             fontLoc.substIdx = substIdx;
-            return fontLoc;
+            return std::move(fontLoc); // std::move only required to please g++-7
         } else {
             path = globalParams->findFontFile(substName);
             if (path) {
@@ -833,7 +811,7 @@ std::optional<GfxFontLoc> GfxFont::getExternalFont(GooString *path, bool cid)
     fontLoc.locType = gfxFontLocExternal;
     fontLoc.fontType = fontType;
     fontLoc.setPath(path);
-    return fontLoc;
+    return std::move(fontLoc); // std::move only required to please g++-7
 }
 
 std::optional<std::vector<unsigned char>> GfxFont::readEmbFontFile(XRef *xref)
@@ -1142,10 +1120,11 @@ Gfx8BitFont::Gfx8BitFont(XRef *xref, const char *tagA, Ref idA, std::optional<st
         const std::optional<std::vector<unsigned char>> buf = readEmbFontFile(xref);
         if (buf) {
             if ((ffT1 = FoFiType1::make(buf->data(), buf->size()))) {
-                const std::string fontName = ffT1->getName();
-                if (!fontName.empty()) {
-                    delete embFontName;
-                    embFontName = new GooString(fontName);
+                if (ffT1->getName()) {
+                    if (embFontName) {
+                        delete embFontName;
+                    }
+                    embFontName = new GooString(ffT1->getName());
                 }
                 if (!baseEnc) {
                     baseEnc = (const char **)ffT1->getEncoding();
@@ -1253,7 +1232,7 @@ Gfx8BitFont::Gfx8BitFont(XRef *xref, const char *tagA, Ref idA, std::optional<st
 
     // pass 1: use the name-to-Unicode mapping table
     missing = hex = false;
-    bool isZapfDingbats = name && name->ends_with("ZapfDingbats");
+    bool isZapfDingbats = name && GooString::endsWith(*name, "ZapfDingbats");
     for (int code = 0; code < 256; ++code) {
         if ((charName = enc[code])) {
             if (isZapfDingbats) {
@@ -1734,6 +1713,7 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
     Object desFontDictObj;
     Object obj1, obj2, obj3, obj4, obj5, obj6;
     int c1, c2;
+    int excepsSize;
 
     ascent = 0.95;
     descent = -0.35;
@@ -1744,6 +1724,10 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
     widths.defWidth = 1.0;
     widths.defHeight = -1.0;
     widths.defVY = 0.880;
+    widths.exceps = nullptr;
+    widths.nExceps = 0;
+    widths.excepsV = nullptr;
+    widths.nExcepsV = 0;
     cidToGID = nullptr;
     cidToGIDLen = 0;
 
@@ -1767,21 +1751,17 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
 
     // char collection
     obj1 = desFontDict->lookup("CIDSystemInfo");
-    if (obj1.isDict()) {
-        obj2 = obj1.dictLookup("Registry");
-        obj3 = obj1.dictLookup("Ordering");
-        if (!obj2.isString() || !obj3.isString()) {
-            error(errSyntaxError, -1, "Invalid CIDSystemInfo dictionary in Type 0 descendant font");
-            error(errSyntaxError, -1, "Assuming Adobe-Identity for character collection");
-            obj2 = Object(new GooString("Adobe"));
-            obj3 = Object(new GooString("Identity"));
-        }
-        collection = obj2.getString()->copy()->append('-')->append(obj3.getString());
-    } else {
+    if (!obj1.isDict()) {
         error(errSyntaxError, -1, "Missing CIDSystemInfo dictionary in Type 0 descendant font");
-        error(errSyntaxError, -1, "Assuming Adobe-Identity for character collection");
-        collection = new GooString("Adobe-Identity");
+        return;
     }
+    obj2 = obj1.dictLookup("Registry");
+    obj3 = obj1.dictLookup("Ordering");
+    if (!obj2.isString() || !obj3.isString()) {
+        error(errSyntaxError, -1, "Invalid CIDSystemInfo dictionary in Type 0 descendant font");
+        return;
+    }
+    collection = obj2.getString()->copy()->append('-')->append(obj3.getString());
 
     // look for a ToUnicode CMap
     if (!(ctu = readToUnicodeCMap(fontDict, 16, nullptr))) {
@@ -1859,6 +1839,7 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
     // char width exceptions
     obj1 = desFontDict->lookup("W");
     if (obj1.isArray()) {
+        excepsSize = 0;
         int i = 0;
         while (i + 1 < obj1.arrayGetLength()) {
             obj2 = obj1.arrayGet(i);
@@ -1866,21 +1847,33 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
             if (obj2.isInt() && obj3.isInt() && i + 2 < obj1.arrayGetLength()) {
                 obj4 = obj1.arrayGet(i + 2);
                 if (obj4.isNum()) {
-                    GfxFontCIDWidthExcep excep { static_cast<CID>(obj2.getInt()), static_cast<CID>(obj3.getInt()), obj4.getNum() * 0.001 };
-                    widths.exceps.push_back(excep);
+                    if (widths.nExceps == excepsSize) {
+                        excepsSize += 16;
+                        widths.exceps = (GfxFontCIDWidthExcep *)greallocn(widths.exceps, excepsSize, sizeof(GfxFontCIDWidthExcep));
+                    }
+                    widths.exceps[widths.nExceps].first = obj2.getInt();
+                    widths.exceps[widths.nExceps].last = obj3.getInt();
+                    widths.exceps[widths.nExceps].width = obj4.getNum() * 0.001;
+                    ++widths.nExceps;
                 } else {
                     error(errSyntaxError, -1, "Bad widths array in Type 0 font");
                 }
                 i += 3;
             } else if (obj2.isInt() && obj3.isArray()) {
+                if (widths.nExceps + obj3.arrayGetLength() > excepsSize) {
+                    excepsSize = (widths.nExceps + obj3.arrayGetLength() + 15) & ~15;
+                    widths.exceps = (GfxFontCIDWidthExcep *)greallocn(widths.exceps, excepsSize, sizeof(GfxFontCIDWidthExcep));
+                }
                 int j = obj2.getInt();
                 if (likely(j < INT_MAX - obj3.arrayGetLength())) {
                     for (int k = 0; k < obj3.arrayGetLength(); ++k) {
                         obj4 = obj3.arrayGet(k);
                         if (obj4.isNum()) {
-                            GfxFontCIDWidthExcep excep { static_cast<CID>(j), static_cast<CID>(j), obj4.getNum() * 0.001 };
-                            widths.exceps.push_back(excep);
+                            widths.exceps[widths.nExceps].first = j;
+                            widths.exceps[widths.nExceps].last = j;
+                            widths.exceps[widths.nExceps].width = obj4.getNum() * 0.001;
                             ++j;
+                            ++widths.nExceps;
                         } else {
                             error(errSyntaxError, -1, "Bad widths array in Type 0 font");
                         }
@@ -1892,7 +1885,7 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
                 ++i;
             }
         }
-        std::sort(widths.exceps.begin(), widths.exceps.end(), cmpWidthExcepFunctor());
+        std::sort(widths.exceps, widths.exceps + widths.nExceps, cmpWidthExcepFunctor());
     }
 
     // default metrics for vertical font
@@ -1911,25 +1904,42 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
     // char metric exceptions for vertical font
     obj1 = desFontDict->lookup("W2");
     if (obj1.isArray()) {
+        excepsSize = 0;
         int i = 0;
         while (i + 1 < obj1.arrayGetLength()) {
             obj2 = obj1.arrayGet(i);
             obj3 = obj1.arrayGet(i + 1);
             if (obj2.isInt() && obj3.isInt() && i + 4 < obj1.arrayGetLength()) {
                 if ((obj4 = obj1.arrayGet(i + 2), obj4.isNum()) && (obj5 = obj1.arrayGet(i + 3), obj5.isNum()) && (obj6 = obj1.arrayGet(i + 4), obj6.isNum())) {
-                    GfxFontCIDWidthExcepV excepV { static_cast<CID>(obj2.getInt()), static_cast<CID>(obj3.getInt()), obj4.getNum() * 0.001, obj5.getNum() * 0.001, obj6.getNum() * 0.001 };
-                    widths.excepsV.push_back(excepV);
+                    if (widths.nExcepsV == excepsSize) {
+                        excepsSize += 16;
+                        widths.excepsV = (GfxFontCIDWidthExcepV *)greallocn(widths.excepsV, excepsSize, sizeof(GfxFontCIDWidthExcepV));
+                    }
+                    widths.excepsV[widths.nExcepsV].first = obj2.getInt();
+                    widths.excepsV[widths.nExcepsV].last = obj3.getInt();
+                    widths.excepsV[widths.nExcepsV].height = obj4.getNum() * 0.001;
+                    widths.excepsV[widths.nExcepsV].vx = obj5.getNum() * 0.001;
+                    widths.excepsV[widths.nExcepsV].vy = obj6.getNum() * 0.001;
+                    ++widths.nExcepsV;
                 } else {
                     error(errSyntaxError, -1, "Bad widths (W2) array in Type 0 font");
                 }
                 i += 5;
             } else if (obj2.isInt() && obj3.isArray()) {
+                if (widths.nExcepsV + obj3.arrayGetLength() / 3 > excepsSize) {
+                    excepsSize = (widths.nExcepsV + obj3.arrayGetLength() / 3 + 15) & ~15;
+                    widths.excepsV = (GfxFontCIDWidthExcepV *)greallocn(widths.excepsV, excepsSize, sizeof(GfxFontCIDWidthExcepV));
+                }
                 int j = obj2.getInt();
                 for (int k = 0; k < obj3.arrayGetLength(); k += 3) {
                     if ((obj4 = obj3.arrayGet(k), obj4.isNum()) && (obj5 = obj3.arrayGet(k + 1), obj5.isNum()) && (obj6 = obj3.arrayGet(k + 2), obj6.isNum())) {
-                        GfxFontCIDWidthExcepV excepV { static_cast<CID>(j), static_cast<CID>(j), obj4.getNum() * 0.001, obj5.getNum() * 0.001, obj6.getNum() * 0.001 };
-                        widths.excepsV.push_back(excepV);
+                        widths.excepsV[widths.nExcepsV].first = j;
+                        widths.excepsV[widths.nExcepsV].last = j;
+                        widths.excepsV[widths.nExcepsV].height = obj4.getNum() * 0.001;
+                        widths.excepsV[widths.nExcepsV].vx = obj5.getNum() * 0.001;
+                        widths.excepsV[widths.nExcepsV].vy = obj6.getNum() * 0.001;
                         ++j;
+                        ++widths.nExcepsV;
                     } else {
                         error(errSyntaxError, -1, "Bad widths (W2) array in Type 0 font");
                     }
@@ -1940,7 +1950,7 @@ GfxCIDFont::GfxCIDFont(XRef *xref, const char *tagA, Ref idA, std::optional<std:
                 ++i;
             }
         }
-        std::sort(widths.excepsV.begin(), widths.excepsV.end(), cmpWidthExcepVFunctor());
+        std::sort(widths.excepsV, widths.excepsV + widths.nExcepsV, cmpWidthExcepVFunctor());
     }
 
     ok = true;
@@ -1954,6 +1964,8 @@ GfxCIDFont::~GfxCIDFont()
     if (ctu) {
         ctu->decRefCnt();
     }
+    gfree(widths.exceps);
+    gfree(widths.excepsV);
     if (cidToGID) {
         gfree(cidToGID);
     }
@@ -2000,9 +2012,9 @@ int GfxCIDFont::getNextChar(const char *s, int len, CharCode *code, Unicode cons
         h = widths.defHeight;
         vx = getWidth(cid) / 2;
         vy = widths.defVY;
-        if (widths.excepsV.size() > 0 && cid >= widths.excepsV[0].first) {
+        if (widths.nExcepsV > 0 && cid >= widths.excepsV[0].first) {
             a = 0;
-            b = widths.excepsV.size();
+            b = widths.nExcepsV;
             // invariant: widths.excepsV[a].first <= cid < widths.excepsV[b].first
             while (b - a > 1) {
                 m = (a + b) / 2;
@@ -2167,6 +2179,7 @@ int *GfxCIDFont::getCodeToGIDMap(FoFiTrueType *ff, int *codeToGIDLen)
         }
     }
     const unsigned int n = 65536;
+    tumap = new Unicode[n];
     humap = new Unicode[n * N_UCS_CANDIDATES];
     memset(humap, 0, sizeof(Unicode) * n * N_UCS_CANDIDATES);
     if (lp->collection != nullptr) {
@@ -2174,7 +2187,6 @@ int *GfxCIDFont::getCodeToGIDMap(FoFiTrueType *ff, int *codeToGIDLen)
         GooString tname(lp->toUnicodeMap);
 
         if ((tctu = CharCodeToUnicode::parseCMapFromFile(&tname, 16)) != nullptr) {
-            tumap = new Unicode[n];
             CharCode cid;
             for (cid = 0; cid < n; cid++) {
                 int len;
@@ -2295,9 +2307,9 @@ double GfxCIDFont::getWidth(CID cid) const
     int a, b, m;
 
     w = widths.defWidth;
-    if (widths.exceps.size() > 0 && cid >= widths.exceps[0].first) {
+    if (widths.nExceps > 0 && cid >= widths.exceps[0].first) {
         a = 0;
-        b = widths.exceps.size();
+        b = widths.nExceps;
         // invariant: widths.exceps[a].first <= cid < widths.exceps[b].first
         while (b - a > 1) {
             m = (a + b) / 2;

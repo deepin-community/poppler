@@ -16,11 +16,11 @@
 //
 // Copyright (C) 2005-2008 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2009, 2012, 2017-2021, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2009, 2012, 2017-2021 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Nickolay V. Shmyrev <nshmyrev@yandex.ru>
 // Copyright (C) 2006-2011, 2013, 2014, 2017, 2018 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2008 Carl Worth <cworth@cworth.org>
-// Copyright (C) 2008-2018, 2021-2024 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2008-2018, 2021, 2022 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2008 Michael Vrable <mvrable@cs.ucsd.edu>
 // Copyright (C) 2008, 2009 Chris Wilson <chris@chris-wilson.co.uk>
 // Copyright (C) 2008, 2012 Hib Eris <hib@hiberis.nl>
@@ -36,9 +36,6 @@
 // Copyright (C) 2020, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 Uli Schlachter <psychon@znc.in>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2022 Zachary Travis <ztravis@everlaw.com>
-// Copyright (C) 2023 Artemy Gordon <artemy.gordon@gmail.com>
-// Copyright (C) 2023 Anton Thomasson <antonthomasson@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -70,7 +67,6 @@
 #include "CairoFontEngine.h"
 #include "CairoRescaleBox.h"
 #include "UnicodeMap.h"
-#include "UTF.h"
 #include "JBIG2Stream.h"
 //------------------------------------------------------------------------
 
@@ -80,9 +76,6 @@
 // cairo images to this size. 8192 is sufficient for an A2 sized
 // 300ppi image.
 #define MAX_PRINT_IMAGE_SIZE 8192
-// Cairo has a max size for image surfaces due to their fixed-point
-// coordinate handling, namely INT16_MAX, aka 32767.
-#define MAX_CAIRO_IMAGE_SIZE 32767
 
 #ifdef LOG_CAIRO
 #    define LOG(x) (x)
@@ -153,10 +146,15 @@ CairoOutputDev::CairoOutputDev()
     strokePathClip = nullptr;
     cairo = nullptr;
     currentFont = nullptr;
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
+    prescaleImages = false;
+#else
+    prescaleImages = true;
+#endif
     printing = true;
     use_show_text_glyphs = false;
     inUncoloredPattern = false;
-    t3_render_state = Type3RenderNone;
+    inType3Char = false;
     t3_glyph_has_bbox = false;
     t3_glyph_has_color = false;
     text_matrix_valid = true;
@@ -170,9 +168,6 @@ CairoOutputDev::CairoOutputDev()
 
     textPage = nullptr;
     actualText = nullptr;
-    logicalStruct = false;
-    pdfPageNum = 0;
-    cairoPageNum = 0;
 
     // the SA parameter supposedly defaults to false, but Acrobat
     // apparently hardwires it to true
@@ -180,7 +175,6 @@ CairoOutputDev::CairoOutputDev()
     align_stroke_coords = false;
     adjusted_stroke_width = false;
     xref = nullptr;
-    currentStructParents = -1;
 }
 
 CairoOutputDev::~CairoOutputDev()
@@ -236,14 +230,6 @@ void CairoOutputDev::setCairo(cairo_t *c)
     }
 }
 
-bool CairoOutputDev::isPDF()
-{
-    if (cairo) {
-        return cairo_surface_get_type(cairo_get_target(cairo)) == CAIRO_SURFACE_TYPE_PDF;
-    }
-    return false;
-}
-
 void CairoOutputDev::setTextPage(TextPage *text)
 {
     if (textPage) {
@@ -285,66 +271,10 @@ void CairoOutputDev::startDoc(PDFDoc *docA, CairoFontEngine *parentFontEngine)
         fontEngine_owner = true;
     }
     xref = doc->getXRef();
-
-    mcidEmitted.clear();
-    destsMap.clear();
-    emittedDestinations.clear();
-    pdfPageToCairoPageMap.clear();
-    pdfPageRefToCairoPageNumMap.clear();
-    cairoPageNum = 0;
-    firstPage = true;
-}
-
-void CairoOutputDev::textStringToQuotedUtf8(const GooString *text, GooString *s)
-{
-    std::string utf8 = TextStringToUtf8(text->toStr());
-    s->Set("'");
-    for (char c : utf8) {
-        if (c == '\\' || c == '\'') {
-            s->append("\\");
-        }
-        s->append(c);
-    }
-    s->append("'");
-}
-
-// Initialization that needs to be performed after setCairo() is called.
-void CairoOutputDev::startFirstPage(int pageNum, GfxState *state, XRef *xrefA)
-{
-    if (xrefA) {
-        xref = xrefA;
-    }
-
-    if (logicalStruct && isPDF()) {
-        int numDests = doc->getCatalog()->numDestNameTree();
-        for (int i = 0; i < numDests; i++) {
-            const GooString *name = doc->getCatalog()->getDestNameTreeName(i);
-            std::unique_ptr<LinkDest> dest = doc->getCatalog()->getDestNameTreeDest(i);
-            if (dest->isPageRef()) {
-                Ref ref = dest->getPageRef();
-                destsMap[ref].insert({ std::string(name->toStr()), std::move(dest) });
-            }
-        }
-
-        numDests = doc->getCatalog()->numDests();
-        for (int i = 0; i < numDests; i++) {
-            const char *name = doc->getCatalog()->getDestsName(i);
-            std::unique_ptr<LinkDest> dest = doc->getCatalog()->getDestsDest(i);
-            if (dest->isPageRef()) {
-                Ref ref = dest->getPageRef();
-                destsMap[ref].insert({ std::string(name), std::move(dest) });
-            }
-        }
-    }
 }
 
 void CairoOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
 {
-    if (firstPage) {
-        startFirstPage(pageNum, state, xrefA);
-        firstPage = false;
-    }
-
     /* set up some per page defaults */
     cairo_pattern_destroy(fill_pattern);
     cairo_pattern_destroy(stroke_pattern);
@@ -357,52 +287,8 @@ void CairoOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefA)
     if (textPage) {
         textPage->startPage(state);
     }
-
-    pdfPageNum = pageNum;
-    cairoPageNum++;
-    pdfPageToCairoPageMap[pdfPageNum] = cairoPageNum;
-
-    if (logicalStruct && isPDF()) {
-        Object obj = doc->getPage(pageNum)->getAnnotsObject(xref);
-        Annots *annots = new Annots(doc, pageNum, &obj);
-
-        for (Annot *annot : annots->getAnnots()) {
-            if (annot->getType() == Annot::typeLink) {
-                annot->incRefCnt();
-                annotations.push_back(annot);
-            }
-        }
-
-        delete annots;
-
-        // emit dests
-        Ref *ref = doc->getCatalog()->getPageRef(pageNum);
-        pdfPageRefToCairoPageNumMap[*ref] = cairoPageNum;
-        auto pageDests = destsMap.find(*ref);
-        if (pageDests != destsMap.end()) {
-            for (auto &it : pageDests->second) {
-                GooString quoted_name;
-                GooString name(it.first);
-                textStringToQuotedUtf8(&name, &quoted_name);
-                emittedDestinations.insert(quoted_name.toStr());
-
-                GooString attrib;
-                attrib.appendf("name={0:t} ", &quoted_name);
-                if (it.second->getChangeLeft()) {
-                    attrib.appendf("x={0:g} ", it.second->getLeft());
-                }
-                if (it.second->getChangeTop()) {
-                    attrib.appendf("y={0:g} ", state->getPageHeight() - it.second->getTop());
-                }
-
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-                cairo_tag_begin(cairo, CAIRO_TAG_DEST, attrib.c_str());
-                cairo_tag_end(cairo, CAIRO_TAG_DEST);
-#endif
-            }
-        }
-
-        currentStructParents = doc->getPage(pageNum)->getStructParents();
+    if (xrefA != nullptr) {
+        xref = xrefA;
     }
 }
 
@@ -411,309 +297,6 @@ void CairoOutputDev::endPage()
     if (textPage) {
         textPage->endPage();
         textPage->coalesce(true, 0, false);
-    }
-}
-
-void CairoOutputDev::beginForm(Object *obj, Ref id)
-{
-    if (logicalStruct && isPDF()) {
-        structParentsStack.push_back(currentStructParents);
-
-        const Object tmp = obj->streamGetDict()->lookup("StructParents");
-        if (!(tmp.isInt() || tmp.isNull())) {
-            error(errSyntaxError, -1, "XObject StructParents object is wrong type ({0:s})", tmp.getTypeName());
-        } else if (tmp.isInt()) {
-            currentStructParents = tmp.getInt();
-        }
-    }
-}
-
-void CairoOutputDev::endForm(Object *obj, Ref id)
-{
-    if (logicalStruct && isPDF()) {
-        currentStructParents = structParentsStack.back();
-        structParentsStack.pop_back();
-    }
-}
-
-void CairoOutputDev::quadToCairoRect(AnnotQuadrilaterals *quads, int idx, double pageHeight, cairo_rectangle_t *rect)
-{
-    double x1, x2, y1, y2;
-    x1 = x2 = quads->getX1(idx);
-    y1 = y2 = quads->getX2(idx);
-
-    x1 = std::min(x1, quads->getX2(idx));
-    x1 = std::min(x1, quads->getX3(idx));
-    x1 = std::min(x1, quads->getX4(idx));
-
-    y1 = std::min(y1, quads->getY2(idx));
-    y1 = std::min(y1, quads->getY3(idx));
-    y1 = std::min(y1, quads->getY4(idx));
-
-    x2 = std::max(x2, quads->getX2(idx));
-    x2 = std::max(x2, quads->getX3(idx));
-    x2 = std::max(x2, quads->getX4(idx));
-
-    y2 = std::max(y2, quads->getY2(idx));
-    y2 = std::max(y2, quads->getY3(idx));
-    y2 = std::max(y2, quads->getY4(idx));
-
-    rect->x = x1;
-    rect->y = pageHeight - y2;
-    rect->width = x2 - x1;
-    rect->height = y2 - y1;
-}
-
-bool CairoOutputDev::appendLinkDestRef(GooString *s, const LinkDest *dest)
-{
-    Ref ref = dest->getPageRef();
-    auto pageNum = pdfPageRefToCairoPageNumMap.find(ref);
-    if (pageNum != pdfPageRefToCairoPageNumMap.end()) {
-        auto cairoPage = pdfPageToCairoPageMap.find(pageNum->second);
-        if (cairoPage != pdfPageToCairoPageMap.end()) {
-            s->appendf("page={0:d} ", cairoPage->second);
-            double destPageHeight = doc->getPageMediaHeight(dest->getPageNum());
-            appendLinkDestXY(s, dest, destPageHeight);
-            return true;
-        }
-    }
-    return false;
-}
-
-void CairoOutputDev::appendLinkDestXY(GooString *s, const LinkDest *dest, double destPageHeight)
-{
-    double x = 0;
-    double y = 0;
-
-    if (dest->getChangeLeft()) {
-        x = dest->getLeft();
-    }
-
-    if (dest->getChangeTop()) {
-        y = dest->getTop();
-    }
-
-    // if pageHeight is 0, dest is remote document, cairo uses PDF coords in this
-    // case. So don't flip coords when pageHeight is 0.
-    s->appendf("pos=[{0:g} {1:g}] ", x, destPageHeight ? destPageHeight - y : y);
-}
-
-bool CairoOutputDev::beginLinkTag(AnnotLink *annotLink)
-{
-    int page_num = annotLink->getPageNum();
-    double height = doc->getPageMediaHeight(page_num);
-
-    GooString attrib;
-    attrib.appendf("link_page={0:d} ", page_num);
-    attrib.append("rect=[");
-    AnnotQuadrilaterals *quads = annotLink->getQuadrilaterals();
-    if (quads && quads->getQuadrilateralsLength() > 0) {
-        for (int i = 0; i < quads->getQuadrilateralsLength(); i++) {
-            cairo_rectangle_t rect;
-            quadToCairoRect(quads, i, height, &rect);
-            attrib.appendf("{0:g} {1:g} {2:g} {3:g} ", rect.x, rect.y, rect.width, rect.height);
-        }
-    } else {
-        double x1, x2, y1, y2;
-        annotLink->getRect(&x1, &y1, &x2, &y2);
-        attrib.appendf("{0:g} {1:g} {2:g} {3:g} ", x1, height - y2, x2 - x1, y2 - y1);
-    }
-    attrib.append("] ");
-
-    LinkAction *action = annotLink->getAction();
-    if (action->getKind() == actionGoTo) {
-        LinkGoTo *act = static_cast<LinkGoTo *>(action);
-        if (act->isOk()) {
-            const GooString *namedDest = act->getNamedDest();
-            const LinkDest *linkDest = act->getDest();
-            if (namedDest) {
-                GooString name;
-                textStringToQuotedUtf8(namedDest, &name);
-                if (emittedDestinations.count(name.toStr()) == 0) {
-                    return false;
-                }
-                attrib.appendf("dest={0:t} ", &name);
-            } else if (linkDest && linkDest->isOk() && linkDest->isPageRef()) {
-                bool ok = appendLinkDestRef(&attrib, linkDest);
-                if (!ok) {
-                    return false;
-                }
-            }
-        }
-    } else if (action->getKind() == actionGoToR) {
-        LinkGoToR *act = static_cast<LinkGoToR *>(action);
-        attrib.appendf("file='{0:t}' ", act->getFileName());
-        const GooString *namedDest = act->getNamedDest();
-        const LinkDest *linkDest = act->getDest();
-        if (namedDest) {
-            GooString name;
-            textStringToQuotedUtf8(namedDest, &name);
-            if (emittedDestinations.count(name.toStr()) == 0) {
-                return false;
-            }
-            attrib.appendf("dest={0:t} ", &name);
-        } else if (linkDest && linkDest->isOk() && !linkDest->isPageRef()) {
-            auto cairoPage = pdfPageToCairoPageMap.find(linkDest->getPageNum());
-            if (cairoPage != pdfPageToCairoPageMap.end()) {
-                attrib.appendf("page={0:d} ", cairoPage->second);
-                appendLinkDestXY(&attrib, linkDest, 0.0);
-            } else {
-                return false;
-            }
-        }
-    } else if (action->getKind() == actionURI) {
-        LinkURI *act = static_cast<LinkURI *>(action);
-        if (act->isOk()) {
-            attrib.appendf("uri='{0:s}'", act->getURI().c_str());
-        }
-    }
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-    cairo_tag_begin(cairo, CAIRO_TAG_LINK, attrib.c_str());
-#endif
-    return true;
-}
-
-AnnotLink *CairoOutputDev::findLinkObject(const StructElement *elem)
-{
-    if (elem->isObjectRef()) {
-        Ref ref = elem->getObjectRef();
-        for (Annot *annot : annotations) {
-            if (annot->getType() == Annot::typeLink && annot->match(&ref)) {
-                return static_cast<AnnotLink *>(annot);
-            }
-        }
-    }
-
-    for (unsigned i = 0; i < elem->getNumChildren(); i++) {
-        AnnotLink *link = findLinkObject(elem->getChild(i));
-        if (link) {
-            return link;
-        }
-    }
-
-    return nullptr;
-}
-
-bool CairoOutputDev::beginLink(const StructElement *linkElem)
-{
-    bool emitted = true;
-    AnnotLink *linkAnnot = findLinkObject(linkElem);
-    if (linkAnnot) {
-        emitted = beginLinkTag(linkAnnot);
-    } else {
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-        cairo_tag_begin(cairo, linkElem->getTypeName(), nullptr);
-#endif
-    }
-    return emitted;
-}
-
-void CairoOutputDev::getStructElemAttributeString(const StructElement *elem)
-{
-    int mcid = 0;
-    GooString attribs;
-    Ref ref = elem->getObjectRef();
-    attribs.appendf("id='{0:d}_{1:d}_{2:d}'", ref.num, ref.gen, mcid);
-    attribs.appendf(" parent='{0:d}_{1:d}'", ref.num, ref.gen);
-}
-
-int CairoOutputDev::getContentElementStructParents(const StructElement *element)
-{
-    int structParents = -1;
-    Ref ref;
-
-    if (element->hasStmRef()) {
-        element->getStmRef(ref);
-        Object xobjectObj = xref->fetch(ref);
-        const Object &spObj = xobjectObj.streamGetDict()->lookup("StructParents");
-        if (spObj.isInt()) {
-            structParents = spObj.getInt();
-        }
-    } else if (element->hasPageRef()) {
-        element->getPageRef(ref);
-        Object pageObj = xref->fetch(ref);
-        const Object &spObj = pageObj.dictLookup("StructParents");
-        if (spObj.isInt()) {
-            structParents = spObj.getInt();
-        }
-    }
-
-    if (structParents == -1) {
-        error(errSyntaxError, -1, "Unable to find StructParents object for StructElement");
-    }
-    return structParents;
-}
-
-bool CairoOutputDev::checkIfStructElementNeeded(const StructElement *element)
-{
-    if (element->isContent() && !element->isObjectRef()) {
-        int structParents = getContentElementStructParents(element);
-        int mcid = element->getMCID();
-        if (mcidEmitted.count(std::pair(structParents, mcid)) > 0) {
-            structElementNeeded.insert(element);
-            return true;
-        }
-    } else if (!element->isContent()) {
-        bool needed = false;
-        for (unsigned i = 0; i < element->getNumChildren(); i++) {
-            if (checkIfStructElementNeeded(element->getChild(i))) {
-                needed = true;
-            }
-        }
-        if (needed) {
-            structElementNeeded.insert(element);
-        }
-        return needed;
-    }
-    return false;
-}
-
-void CairoOutputDev::emitStructElement(const StructElement *element)
-{
-    if (structElementNeeded.count(element) == 0) {
-        return;
-    }
-
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-    if (element->isContent() && !element->isObjectRef()) {
-        int structParents = getContentElementStructParents(element);
-        int mcid = element->getMCID();
-        GooString attribs;
-        attribs.appendf("ref='{0:d}_{1:d}'", structParents, mcid);
-        cairo_tag_begin(cairo, CAIRO_TAG_CONTENT_REF, attribs.c_str());
-        cairo_tag_end(cairo, CAIRO_TAG_CONTENT_REF);
-    } else if (!element->isContent()) {
-        if (element->getType() == StructElement::Link) {
-            bool ok = beginLink(element);
-            if (!ok) {
-                return;
-            }
-        } else {
-            cairo_tag_begin(cairo, element->getTypeName(), "");
-        }
-        for (unsigned i = 0; i < element->getNumChildren(); i++) {
-            emitStructElement(element->getChild(i));
-        }
-        cairo_tag_end(cairo, element->getTypeName());
-    }
-#endif
-}
-
-void CairoOutputDev::emitStructTree()
-{
-    if (logicalStruct && isPDF()) {
-        const StructTreeRoot *root = doc->getStructTreeRoot();
-        if (!root) {
-            return;
-        }
-
-        for (unsigned i = 0; i < root->getNumChildren(); i++) {
-            checkIfStructElementNeeded(root->getChild(i));
-        }
-
-        for (unsigned i = 0; i < root->getNumChildren(); i++) {
-            emitStructElement(root->getChild(i));
-        }
     }
 }
 
@@ -1304,7 +887,7 @@ void CairoOutputDev::doPath(cairo_t *c, GfxState *state, const GfxPath *path)
 
 void CairoOutputDev::stroke(GfxState *state)
 {
-    if (t3_render_state == Type3RenderMask) {
+    if (inType3Char) {
         GfxGray gray;
         state->getFillGray(&gray);
         if (colToDbl(gray) > 0.5) {
@@ -1335,7 +918,7 @@ void CairoOutputDev::stroke(GfxState *state)
 
 void CairoOutputDev::fill(GfxState *state)
 {
-    if (t3_render_state == Type3RenderMask) {
+    if (inType3Char) {
         GfxGray gray;
         state->getFillGray(&gray);
         if (colToDbl(gray) > 0.5) {
@@ -1522,6 +1105,7 @@ bool CairoOutputDev::tilingPatternFill(GfxState *state, Gfx *gfxA, Catalog *cat,
     return true;
 }
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
 bool CairoOutputDev::functionShadedFill(GfxState *state, GfxFunctionShading *shading)
 {
     // Function shaded fills are subdivided to rectangles that are the
@@ -1609,6 +1193,7 @@ bool CairoOutputDev::functionShadedFill(GfxState *state, GfxFunctionShading *sha
 
     return true;
 }
+#endif /* CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0) */
 
 bool CairoOutputDev::axialShadedFill(GfxState *state, GfxAxialShading *shading, double tMin, double tMax)
 {
@@ -1679,6 +1264,7 @@ bool CairoOutputDev::radialShadedSupportExtend(GfxState *state, GfxRadialShading
     return (shading->getExtend0() == shading->getExtend1());
 }
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
 bool CairoOutputDev::gouraudTriangleShadedFill(GfxState *state, GfxGouraudTriangleShading *shading)
 {
     double x0, y0, x1, y1, x2, y2;
@@ -1806,6 +1392,7 @@ bool CairoOutputDev::patchMeshShadedFill(GfxState *state, GfxPatchMeshShading *s
 
     return true;
 }
+#endif /* CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0) */
 
 void CairoOutputDev::clip(GfxState *state)
 {
@@ -1947,12 +1534,6 @@ void CairoOutputDev::endString(GfxState *state)
     render = state->getRender();
     if (render == 3 || glyphCount == 0 || !text_matrix_valid) {
         goto finish;
-    }
-
-    if (state->getFont()->getType() == fontType3 && render != 7) {
-        // If the current font is a type 3 font, we should ignore the text rendering mode
-        // (and use the default of 0) as long as we are going to either fill or stroke.
-        render = 0;
     }
 
     if (!(render & 1)) {
@@ -2340,23 +1921,21 @@ void CairoOutputDev::setSoftMask(GfxState *state, const double *bbox, bool alpha
 
         /* convert to a luminocity map */
         uint32_t *source_data = reinterpret_cast<uint32_t *>(cairo_image_surface_get_data(source));
-        if (source_data) {
-            /* get stride in units of 32 bits */
-            ptrdiff_t stride = cairo_image_surface_get_stride(source) / 4;
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int lum = alpha ? fill_opacity : luminocity(source_data[y * stride + x]);
-                    if (transferFunc) {
-                        double lum_in, lum_out;
-                        lum_in = lum / 256.0;
-                        transferFunc->transform(&lum_in, &lum_out);
-                        lum = (int)(lum_out * 255.0 + 0.5);
-                    }
-                    source_data[y * stride + x] = lum << 24;
+        /* get stride in units of 32 bits */
+        ptrdiff_t stride = cairo_image_surface_get_stride(source) / 4;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int lum = alpha ? fill_opacity : luminocity(source_data[y * stride + x]);
+                if (transferFunc) {
+                    double lum_in, lum_out;
+                    lum_in = lum / 256.0;
+                    transferFunc->transform(&lum_in, &lum_out);
+                    lum = (int)(lum_out * 255.0 + 0.5);
                 }
+                source_data[y * stride + x] = lum << 24;
             }
-            cairo_surface_mark_dirty(source);
         }
+        cairo_surface_mark_dirty(source);
 
         /* setup the new mask pattern */
         mask = cairo_pattern_create_for_surface(source);
@@ -2539,7 +2118,17 @@ void CairoOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, in
     cairo_get_matrix(cairo, &matrix);
     // XXX: it is possible that we should only do sub pixel positioning if
     // we are rendering fonts */
-    drawImageMaskRegular(state, ref, str, width, height, invert, interpolate, inlineImg);
+    if (!printing
+        && prescaleImages
+        /* not rotated */
+        && matrix.xy == 0
+        && matrix.yx == 0
+        /* axes not flipped / not 180 deg rotated */
+        && matrix.xx > 0 && (upsideDown() ? -1 : 1) * matrix.yy > 0) {
+        drawImageMaskPrescaled(state, ref, str, width, height, invert, interpolate, inlineImg);
+    } else {
+        drawImageMaskRegular(state, ref, str, width, height, invert, interpolate, inlineImg);
+    }
 }
 
 void CairoOutputDev::setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool inlineImg, double *baseMatrix)
@@ -2582,7 +2171,11 @@ void CairoOutputDev::setSoftMaskFromImageMask(GfxState *state, Object *ref, Stre
         cairo_get_matrix(cairo, &matrix);
         // XXX: it is possible that we should only do sub pixel positioning if
         // we are rendering fonts */
-        drawImageMaskRegular(state, ref, str, width, height, invert, false, inlineImg);
+        if (!printing && prescaleImages && matrix.xy == 0.0 && matrix.yx == 0.0) {
+            drawImageMaskPrescaled(state, ref, str, width, height, invert, false, inlineImg);
+        } else {
+            drawImageMaskRegular(state, ref, str, width, height, invert, false, inlineImg);
+        }
 
         if (state->getFillColorSpace()->getMode() == csPattern) {
             cairo_set_source_rgb(cairo, 1, 1, 1);
@@ -2721,6 +2314,297 @@ cleanup:
     delete imgStr;
 }
 
+void CairoOutputDev::drawImageMaskPrescaled(GfxState *state, Object *ref, Stream *str, int width, int height, bool invert, bool interpolate, bool inlineImg)
+{
+    unsigned char *buffer;
+    cairo_surface_t *image;
+    cairo_pattern_t *pattern;
+    ImageStream *imgStr;
+    unsigned char *pix;
+    cairo_matrix_t matrix;
+    int invert_bit;
+    ptrdiff_t row_stride;
+
+    /* cairo does a very poor job of scaling down images so we scale them ourselves */
+
+    LOG(printf("drawImageMaskPrescaled %dx%d\n", width, height));
+
+    /* this scaling code is adopted from the splash image scaling code */
+    cairo_get_matrix(cairo, &matrix);
+#if 0
+  printf("[%f %f], [%f %f], %f %f\n", matrix.xx, matrix.xy, matrix.yx, matrix.yy, matrix.x0, matrix.y0);
+#endif
+    /* this whole computation should be factored out */
+    double xScale = matrix.xx;
+    double yScale = matrix.yy;
+    int tx, tx2, ty, ty2; /* the integer co-ordinates of the resulting image */
+    int scaledHeight;
+    int scaledWidth;
+    if (xScale >= 0) {
+        tx = splashRound(matrix.x0 - 0.01);
+        tx2 = splashRound(matrix.x0 + xScale + 0.01) - 1;
+    } else {
+        tx = splashRound(matrix.x0 + 0.01) - 1;
+        tx2 = splashRound(matrix.x0 + xScale - 0.01);
+    }
+    scaledWidth = abs(tx2 - tx) + 1;
+    // scaledWidth = splashRound(fabs(xScale));
+    if (scaledWidth == 0) {
+        // technically, this should draw nothing, but it generally seems
+        // better to draw a one-pixel-wide stripe rather than throwing it
+        // away
+        scaledWidth = 1;
+    }
+    if (yScale >= 0) {
+        ty = splashFloor(matrix.y0 + 0.01);
+        ty2 = splashCeil(matrix.y0 + yScale - 0.01);
+    } else {
+        ty = splashCeil(matrix.y0 - 0.01);
+        ty2 = splashFloor(matrix.y0 + yScale + 0.01);
+    }
+    scaledHeight = abs(ty2 - ty);
+    if (scaledHeight == 0) {
+        scaledHeight = 1;
+    }
+#if 0
+  printf("xscale: %g, yscale: %g\n", xScale, yScale);
+  printf("width: %d, height: %d\n", width, height);
+  printf("scaledWidth: %d, scaledHeight: %d\n", scaledWidth, scaledHeight);
+#endif
+
+    /* compute the required padding */
+    /* Padding is used to preserve the aspect ratio.
+       We compute total_pad to make (height+total_pad)/scaledHeight as close to height/yScale as possible */
+    int head_pad = 0;
+    int tail_pad = 0;
+    int total_pad = splashRound(height * (scaledHeight / fabs(yScale)) - height);
+
+    /* compute the two pieces of padding */
+    if (total_pad > 0) {
+        // XXX: i'm not positive fabs() is correct
+        float tail_error = fabs(matrix.y0 - ty);
+        float head_error = fabs(ty2 - (matrix.y0 + yScale));
+        float tail_fraction = tail_error / (tail_error + head_error);
+        tail_pad = splashRound(total_pad * tail_fraction);
+        head_pad = total_pad - tail_pad;
+    } else {
+        tail_pad = 0;
+        head_pad = 0;
+    }
+    int origHeight = height;
+    height += tail_pad;
+    height += head_pad;
+#if 0
+  printf("head_pad: %d tail_pad: %d\n", head_pad, tail_pad);
+  printf("origHeight: %d height: %d\n", origHeight, height);
+  printf("ty: %d, ty2: %d\n", ty, ty2);
+#endif
+
+    /* TODO: Do we want to cache these? */
+    imgStr = new ImageStream(str, width, 1, 1);
+    imgStr->reset();
+
+    invert_bit = invert ? 1 : 0;
+
+    image = cairo_image_surface_create(CAIRO_FORMAT_A8, scaledWidth, scaledHeight);
+    if (cairo_surface_status(image)) {
+        imgStr->close();
+        delete imgStr;
+        return;
+    }
+
+    buffer = cairo_image_surface_get_data(image);
+    row_stride = cairo_image_surface_get_stride(image);
+
+    int yp = height / scaledHeight;
+    int yq = height % scaledHeight;
+    int xp = width / scaledWidth;
+    int xq = width % scaledWidth;
+    int yt = 0;
+    int origHeight_c = origHeight;
+    /* use MIN() because yp might be > origHeight because of padding */
+    unsigned char *pixBuf = (unsigned char *)malloc(MIN(yp + 1, origHeight) * width);
+    int lastYStep = 1;
+    int total = 0;
+    for (int y = 0; y < scaledHeight; y++) {
+        // y scale Bresenham
+        int yStep = yp;
+        yt += yq;
+
+        if (yt >= scaledHeight) {
+            yt -= scaledHeight;
+            ++yStep;
+        }
+
+        // read row (s) from image ignoring the padding as appropriate
+        {
+            int n = (yp > 0) ? yStep : lastYStep;
+            total += n;
+            if (n > 0) {
+                unsigned char *p = pixBuf;
+                int head_pad_count = head_pad;
+                int origHeight_count = origHeight;
+                int tail_pad_count = tail_pad;
+                for (int i = 0; i < n; i++) {
+                    // get row
+                    if (head_pad_count) {
+                        head_pad_count--;
+                    } else if (origHeight_count) {
+                        pix = imgStr->getLine();
+                        for (int j = 0; j < width; j++) {
+                            if (pix[j] ^ invert_bit) {
+                                p[j] = 0;
+                            } else {
+                                p[j] = 255;
+                            }
+                        }
+                        origHeight_count--;
+                        p += width;
+                    } else if (tail_pad_count) {
+                        tail_pad_count--;
+                    } else {
+                        printf("%d %d\n", n, total);
+                        assert(0 && "over run\n");
+                    }
+                }
+            }
+        }
+
+        lastYStep = yStep;
+
+        int xt = 0;
+        int xSrc = 0;
+        int n = yStep > 0 ? yStep : 1;
+        int origN = n;
+
+        /* compute the size of padding and pixels that will be used for this row */
+        int head_pad_size = MIN(n, head_pad);
+        n -= head_pad_size;
+        head_pad -= MIN(head_pad_size, yStep);
+
+        int pix_size = MIN(n, origHeight);
+        n -= pix_size;
+        origHeight -= MIN(pix_size, yStep);
+
+        int tail_pad_size = MIN(n, tail_pad);
+        n -= tail_pad_size;
+        tail_pad -= MIN(tail_pad_size, yStep);
+        if (n != 0) {
+            printf("n = %d (%d %d %d)\n", n, head_pad_size, pix_size, tail_pad_size);
+            assert(n == 0);
+        }
+
+        for (int x = 0; x < scaledWidth; ++x) {
+            int xStep = xp;
+            xt += xq;
+            if (xt >= scaledWidth) {
+                xt -= scaledWidth;
+                ++xStep;
+            }
+            int m = xStep > 0 ? xStep : 1;
+            float pixAcc0 = 0;
+            /* could m * head_pad_size * tail_pad_size  overflow? */
+            if (invert_bit) {
+                pixAcc0 += m * head_pad_size * tail_pad_size * 255;
+            } else {
+                pixAcc0 += m * head_pad_size * tail_pad_size * 0;
+            }
+            /* Accumulate all of the source pixels for the destination pixel */
+            for (int i = 0; i < pix_size; ++i) {
+                for (int j = 0; j < m; ++j) {
+                    if (xSrc + i * width + j > MIN(yp + 1, origHeight_c) * width) {
+                        printf("%d > %d (%d %d %d %d) (%d %d %d)\n", xSrc + i * width + j, MIN(yp + 1, origHeight_c) * width, xSrc, i, width, j, yp, origHeight_c, width);
+                        printf("%d %d %d\n", head_pad_size, pix_size, tail_pad_size);
+                        assert(0 && "bad access\n");
+                    }
+                    pixAcc0 += pixBuf[xSrc + i * width + j];
+                }
+            }
+            buffer[y * row_stride + x] = splashFloor(pixAcc0 / (origN * m));
+            xSrc += xStep;
+        }
+    }
+    free(pixBuf);
+
+    cairo_surface_mark_dirty(image);
+    pattern = cairo_pattern_create_for_surface(image);
+    cairo_surface_destroy(image);
+    if (cairo_pattern_status(pattern)) {
+        imgStr->close();
+        delete imgStr;
+        return;
+    }
+
+    /* we should actually be using CAIRO_FILTER_NEAREST here. However,
+     * cairo doesn't yet do minifaction filtering causing scaled down
+     * images with CAIRO_FILTER_NEAREST to look really bad */
+    cairo_pattern_set_filter(pattern, interpolate ? CAIRO_FILTER_GOOD : CAIRO_FILTER_FAST);
+
+    if (state->getFillColorSpace()->getMode() == csPattern) {
+        cairo_matrix_init_translate(&matrix, 0, scaledHeight);
+        cairo_matrix_scale(&matrix, scaledWidth, -scaledHeight);
+        cairo_pattern_set_matrix(pattern, &matrix);
+        if (cairo_pattern_status(pattern)) {
+            cairo_pattern_destroy(pattern);
+            imgStr->close();
+            delete imgStr;
+            return;
+        }
+
+        mask = cairo_pattern_reference(pattern);
+        cairo_get_matrix(cairo, &mask_matrix);
+    } else {
+        cairo_save(cairo);
+
+        /* modify our current transformation so that the prescaled image
+         * goes where it is supposed to */
+        cairo_get_matrix(cairo, &matrix);
+        cairo_scale(cairo, 1.0 / matrix.xx, 1.0 / matrix.yy);
+        // get integer co-ords
+        cairo_translate(cairo, tx - matrix.x0, ty2 - matrix.y0);
+        if (yScale > 0) {
+            cairo_scale(cairo, 1, -1);
+        }
+
+        cairo_rectangle(cairo, 0., 0., scaledWidth, scaledHeight);
+        cairo_clip(cairo);
+        if (strokePathClip) {
+            cairo_push_group(cairo);
+            fillToStrokePathClip(state);
+            cairo_pop_group_to_source(cairo);
+        }
+        cairo_mask(cairo, pattern);
+
+        // cairo_get_matrix(cairo, &matrix);
+        // printf("mask at: [%f %f], [%f %f], %f %f\n\n", matrix.xx, matrix.xy, matrix.yx, matrix.yy, matrix.x0, matrix.y0);
+        cairo_restore(cairo);
+    }
+
+    if (cairo_shape) {
+        cairo_save(cairo_shape);
+
+        /* modify our current transformation so that the prescaled image
+         * goes where it is supposed to */
+        cairo_get_matrix(cairo_shape, &matrix);
+        cairo_scale(cairo_shape, 1.0 / matrix.xx, 1.0 / matrix.yy);
+        // get integer co-ords
+        cairo_translate(cairo_shape, tx - matrix.x0, ty2 - matrix.y0);
+        if (yScale > 0) {
+            cairo_scale(cairo_shape, 1, -1);
+        }
+
+        cairo_rectangle(cairo_shape, 0., 0., scaledWidth, scaledHeight);
+        cairo_fill(cairo_shape);
+
+        cairo_restore(cairo_shape);
+    }
+
+    cairo_pattern_destroy(pattern);
+
+    imgStr->close();
+    delete imgStr;
+}
+
 void CairoOutputDev::drawMaskedImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, Stream *maskStr, int maskWidth, int maskHeight, bool maskInvert, bool maskInterpolate)
 {
     ImageStream *maskImgStr, *imgStr;
@@ -2782,7 +2666,7 @@ void CairoOutputDev::drawMaskedImage(GfxState *state, Object *ref, Stream *str, 
    * so check its underlying color space as well */
   int is_identity_transform;
   is_identity_transform = colorMap->getColorSpace()->getMode() == csDeviceRGB ||
-		  (colorMap->getColorSpace()->getMode() == csICCBased &&
+		  (colorMap->getColorSpace()->getMode() == csICCBased && 
 		   ((GfxICCBasedColorSpace*)colorMap->getColorSpace())->getAlt()->getMode() == csDeviceRGB);
 #endif
 
@@ -2872,35 +2756,12 @@ cleanup:
     delete imgStr;
 }
 
-static inline void getMatteColorRgb(GfxImageColorMap *colorMap, const GfxColor *matteColorIn, GfxRGB *matteColorRgb)
-{
-    colorMap->getColorSpace()->getRGB(matteColorIn, matteColorRgb);
-    matteColorRgb->r = colToByte(matteColorRgb->r);
-    matteColorRgb->g = colToByte(matteColorRgb->g);
-    matteColorRgb->b = colToByte(matteColorRgb->b);
-}
-
-static inline void applyMask(unsigned int *imagePointer, int length, GfxRGB matteColor, unsigned char *alphaPointer)
-{
-    unsigned char *p, r, g, b;
-    int i;
-
-    for (i = 0, p = (unsigned char *)imagePointer; i < length; i++, p += 4, alphaPointer++) {
-        if (*alphaPointer) {
-            b = std::clamp(matteColor.b + (int)(p[0] - matteColor.b) * 255 / *alphaPointer, 0, 255);
-            g = std::clamp(matteColor.g + (int)(p[1] - matteColor.g) * 255 / *alphaPointer, 0, 255);
-            r = std::clamp(matteColor.r + (int)(p[2] - matteColor.r) * 255 / *alphaPointer, 0, 255);
-            imagePointer[i] = (r << 16) | (g << 8) | (b << 0);
-        }
-    }
-}
-
 // XXX: is this affect by AIS(alpha is shape)?
 void CairoOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, Stream *maskStr, int maskWidth, int maskHeight, GfxImageColorMap *maskColorMap,
                                          bool maskInterpolate)
 {
     ImageStream *maskImgStr, *imgStr;
-    ptrdiff_t row_stride, mask_row_stride;
+    ptrdiff_t row_stride;
     unsigned char *maskBuffer, *buffer;
     unsigned char *maskDest;
     unsigned int *dest;
@@ -2911,12 +2772,6 @@ void CairoOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *s
     int y;
     cairo_filter_t filter;
     cairo_filter_t maskFilter;
-    GfxRGB matteColorRgb;
-
-    const GfxColor *matteColor = maskColorMap->getMatteColor();
-    if (matteColor != nullptr) {
-        getMatteColorRgb(colorMap, matteColor, &matteColorRgb);
-    }
 
     maskImgStr = new ImageStream(maskStr, maskWidth, maskColorMap->getNumPixelComps(), maskColorMap->getBits());
     maskImgStr->reset();
@@ -2929,9 +2784,9 @@ void CairoOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *s
     }
 
     maskBuffer = cairo_image_surface_get_data(maskImage);
-    mask_row_stride = cairo_image_surface_get_stride(maskImage);
+    row_stride = cairo_image_surface_get_stride(maskImage);
     for (y = 0; y < maskHeight; y++) {
-        maskDest = (unsigned char *)(maskBuffer + y * mask_row_stride);
+        maskDest = (unsigned char *)(maskBuffer + y * row_stride);
         pix = maskImgStr->getLine();
         if (likely(pix != nullptr)) {
             maskColorMap->getGrayLine(pix, maskDest, maskWidth);
@@ -2973,22 +2828,14 @@ void CairoOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream *s
     for (y = 0; y < height; y++) {
         dest = reinterpret_cast<unsigned int *>(buffer + y * row_stride);
         pix = imgStr->getLine();
-        if (likely(pix != nullptr)) {
-            colorMap->getRGBLine(pix, dest, width);
-            if (matteColor != nullptr) {
-                maskDest = (unsigned char *)(maskBuffer + y * mask_row_stride);
-                applyMask(dest, width, matteColorRgb, maskDest);
-            }
-        }
+        colorMap->getRGBLine(pix, dest, width);
     }
 
     filter = getFilterForSurface(image, interpolate);
 
     cairo_surface_mark_dirty(image);
 
-    if (matteColor == nullptr) {
-        setMimeData(state, str, ref, colorMap, image, height);
-    }
+    setMimeData(state, str, ref, colorMap, image, height);
 
     pattern = cairo_pattern_create_for_surface(image);
     cairo_surface_destroy(image);
@@ -3107,6 +2954,7 @@ static bool colorMapHasIdentityDecodeMap(GfxImageColorMap *colorMap)
     return true;
 }
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 11, 2)
 static cairo_status_t setMimeIdFromRef(cairo_surface_t *surface, const char *mime_type, const char *mime_id_prefix, Ref ref)
 {
     GooString *mime_id;
@@ -3129,7 +2977,9 @@ static cairo_status_t setMimeIdFromRef(cairo_surface_t *surface, const char *mim
     }
     return status;
 }
+#endif
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
 bool CairoOutputDev::setMimeDataForJBIG2Globals(Stream *str, cairo_surface_t *image)
 {
     JBIG2Stream *jb2Str = static_cast<JBIG2Stream *>(str);
@@ -3157,7 +3007,9 @@ bool CairoOutputDev::setMimeDataForJBIG2Globals(Stream *str, cairo_surface_t *im
 
     return true;
 }
+#endif
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 15, 10)
 bool CairoOutputDev::setMimeDataForCCITTParams(Stream *str, cairo_surface_t *image, int height)
 {
     CCITTFaxStream *ccittStr = static_cast<CCITTFaxStream *>(str);
@@ -3180,6 +3032,7 @@ bool CairoOutputDev::setMimeDataForCCITTParams(Stream *str, cairo_surface_t *ima
 
     return true;
 }
+#endif
 
 void CairoOutputDev::setMimeData(GfxState *state, Stream *str, Object *ref, GfxImageColorMap *colorMap, cairo_surface_t *image, int height)
 {
@@ -3195,7 +3048,8 @@ void CairoOutputDev::setMimeData(GfxState *state, Stream *str, Object *ref, GfxI
         return;
     }
 
-    // The cairo PS backend stores images with UNIQUE_ID in PS memory so the
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 11, 2)
+    // Since 1.5.10 the cairo PS backend stores images with UNIQUE_ID in PS memory so the
     // image can be re-used multiple times. As we don't know how large the images are or
     // how many times they are used, there is no benefit in enabling this. Issue #106
     if (cairo_surface_get_type(cairo_get_target(cairo)) != CAIRO_SURFACE_TYPE_PS) {
@@ -3206,6 +3060,7 @@ void CairoOutputDev::setMimeData(GfxState *state, Stream *str, Object *ref, GfxI
             }
         }
     }
+#endif
 
     switch (strKind) {
     case strDCT:
@@ -3214,12 +3069,16 @@ void CairoOutputDev::setMimeData(GfxState *state, Stream *str, Object *ref, GfxI
     case strJPX:
         mime_type = CAIRO_MIME_TYPE_JP2;
         break;
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
     case strJBIG2:
         mime_type = CAIRO_MIME_TYPE_JBIG2;
         break;
+#endif
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 15, 10)
     case strCCITTFax:
         mime_type = CAIRO_MIME_TYPE_CCITT_FAX;
         break;
+#endif
     default:
         mime_type = nullptr;
         break;
@@ -3260,13 +3119,17 @@ void CairoOutputDev::setMimeData(GfxState *state, Stream *str, Object *ref, GfxI
         return;
     }
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
     if (strKind == strJBIG2 && !setMimeDataForJBIG2Globals(str, image)) {
         return;
     }
+#endif
 
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 15, 10)
     if (strKind == strCCITTFax && !setMimeDataForCCITTParams(str, image, height)) {
         return;
     }
+#endif
 
     if (mime_type) {
         if (getStreamData(str->getNextStream(), &strBuffer, &len)) {
@@ -3332,7 +3195,11 @@ public:
             }
         }
 
-        bool needsCustomDownscaling = (width > MAX_CAIRO_IMAGE_SIZE || height > MAX_CAIRO_IMAGE_SIZE);
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
+        bool needsCustomDownscaling = false;
+#else
+        bool needsCustomDownscaling = true;
+#endif
 
         if (printing) {
             if (width > MAX_PRINT_IMAGE_SIZE || height > MAX_PRINT_IMAGE_SIZE) {
@@ -3351,6 +3218,8 @@ public:
                 if (scaledHeight == 0) {
                     scaledHeight = 1;
                 }
+            } else {
+                needsCustomDownscaling = false;
             }
         }
 
@@ -3371,12 +3240,12 @@ public:
                 getRow(y, dest);
             }
         } else {
-            // Downscaling required. Create cairo image the size of the
-            // rescaled image and downscale the source image data into
+            // // Downscaling required. Create cairo image the size of the
+            // rescaled image and // downscale the source image data into
             // the cairo image. downScaleImage() will call getRow() to read
             // source image data from the image stream. This avoids having
             // to create an image the size of the source image which may
-            // exceed cairo's 32767x32767 image size limit (and also saves a
+            // exceed cairo's 32676x32767 image size limit (and also saves a
             // lot of memory).
             image = cairo_image_surface_create(maskColors ? CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_RGB24, scaledWidth, scaledHeight);
             if (cairo_surface_status(image)) {
@@ -3475,7 +3344,16 @@ void CairoOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int wi
     }
 
     if (!inlineImg) { /* don't read stream twice if it is an inline image */
-        setMimeData(state, str, ref, colorMap, image, heightA);
+        // cairo 1.15.10 allows mime image data to have different size to cairo image
+        // mime image size will be scaled to same size as cairo image
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 15, 10)
+        bool requireSameSize = false;
+#else
+        bool requireSameSize = true;
+#endif
+        if (!requireSameSize || (width == widthA && height == heightA)) {
+            setMimeData(state, str, ref, colorMap, image, heightA);
+        }
     }
 
     pattern = cairo_pattern_create_for_surface(image);
@@ -3543,58 +3421,6 @@ void CairoOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int wi
     }
 
     cairo_pattern_destroy(pattern);
-}
-
-void CairoOutputDev::beginMarkedContent(const char *name, Dict *properties)
-{
-    if (!logicalStruct || !isPDF()) {
-        return;
-    }
-
-    if (strcmp(name, "Artifact") == 0) {
-        markedContentStack.emplace_back(name);
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-        cairo_tag_begin(cairo, name, nullptr);
-#endif
-        return;
-    }
-
-    int mcid = -1;
-    if (properties) {
-        properties->lookupInt("MCID", nullptr, &mcid);
-    }
-
-    if (mcid == -1) {
-        return;
-    }
-
-    GooString attribs;
-    attribs.appendf("tag_name='{0:s}' id='{1:d}_{2:d}'", name, currentStructParents, mcid);
-    mcidEmitted.insert(std::pair<int, int>(currentStructParents, mcid));
-
-    std::string tag;
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-    tag = CAIRO_TAG_CONTENT;
-    cairo_tag_begin(cairo, CAIRO_TAG_CONTENT, attribs.c_str());
-#endif
-
-    markedContentStack.push_back(tag);
-}
-
-void CairoOutputDev::endMarkedContent(GfxState *state)
-{
-    if (!logicalStruct || !isPDF()) {
-        return;
-    }
-
-    if (markedContentStack.size() == 0) {
-        return;
-    }
-
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 18, 0)
-    cairo_tag_end(cairo, markedContentStack.back().c_str());
-#endif
-    markedContentStack.pop_back();
 }
 
 //------------------------------------------------------------------------

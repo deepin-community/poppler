@@ -3,7 +3,7 @@
 // FontInfo.cc
 //
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005-2008, 2010, 2017-2020, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2008, 2010, 2017-2020 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
 // Copyright (C) 2006 Kouhei Sutou <kou@cozmixng.org>
 // Copyright (C) 2009 Pino Toscano <pino@kde.org>
@@ -15,7 +15,6 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018, 2019 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2021, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2023 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -130,25 +129,26 @@ void FontInfoScanner::scanFonts(XRef *xrefA, Dict *resDict, std::vector<FontInfo
     // resource dictionary
     const char *resTypes[] = { "XObject", "Pattern" };
     for (const char *resType : resTypes) {
-        Ref objDictRef;
-        Object objDict = resDict->lookup(resType, &objDictRef);
-        if (!visitedObjects.insert(objDictRef)) {
-            continue;
-        }
+        Object objDict = resDict->lookup(resType);
         if (objDict.isDict()) {
             for (int i = 0; i < objDict.dictGetLength(); ++i) {
                 Ref obj2Ref;
                 const Object obj2 = objDict.getDict()->getVal(i, &obj2Ref);
-                // check for an already-seen object
-                if (!visitedObjects.insert(obj2Ref)) {
-                    continue;
+                if (obj2Ref != Ref::INVALID()) {
+                    // check for an already-seen object
+                    if (!visitedObjects.insert(obj2Ref.num).second) {
+                        continue;
+                    }
                 }
 
                 if (obj2.isStream()) {
                     Ref resourcesRef;
                     const Object resObj = obj2.streamGetDict()->lookup("Resources", &resourcesRef);
-                    if (!visitedObjects.insert(resourcesRef)) {
-                        continue;
+
+                    if (resourcesRef != Ref::INVALID()) {
+                        if (!visitedObjects.insert(resourcesRef.num).second) {
+                            continue;
+                        }
                     }
 
                     if (resObj.isDict() && resObj.getDict() != resDict) {
@@ -176,16 +176,17 @@ FontInfo::FontInfo(GfxFont *font, XRef *xref)
     // check for an embedded font
     if (font->getType() == fontType3) {
         emb = true;
-        embRef = Ref::INVALID();
     } else {
         emb = font->getEmbeddedFontID(&embRef);
     }
 
     if (!emb) {
+        SysFontType dummy;
+        int dummy2;
         GooString substituteNameAux;
-        const std::optional<GfxFontLoc> fontLoc = font->locateFont(xref, nullptr, &substituteNameAux);
-        if (fontLoc && fontLoc->locType == gfxFontLocExternal) {
-            file = fontLoc->path;
+        std::unique_ptr<GooString> tmpFile(globalParams->findSystemFontFile(font, &dummy, &dummy2, &substituteNameAux));
+        if (tmpFile) {
+            file = tmpFile->toStr();
         }
         if (substituteNameAux.getLength() > 0) {
             substituteName = substituteNameAux.toStr();

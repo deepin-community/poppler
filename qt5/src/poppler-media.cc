@@ -1,6 +1,6 @@
 /* poppler-media.cc: qt interface to poppler
  * Copyright (C) 2012 Guillermo A. Amaral B. <gamaral@kde.org>
- * Copyright (C) 2013, 2018, 2021, 2024 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2013, 2018, 2021 Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,19 +32,17 @@ namespace Poppler {
 class MediaRenditionPrivate
 {
 public:
-    explicit MediaRenditionPrivate(std::unique_ptr<::MediaRendition> &&renditionA) : rendition(std::move(renditionA)) { }
+    explicit MediaRenditionPrivate(::MediaRendition *renditionA) : rendition(renditionA) { }
 
-    ~MediaRenditionPrivate() = default;
+    ~MediaRenditionPrivate() { delete rendition; }
 
     MediaRenditionPrivate(const MediaRenditionPrivate &) = delete;
     MediaRenditionPrivate &operator=(const MediaRenditionPrivate &) = delete;
 
-    std::unique_ptr<::MediaRendition> rendition;
+    ::MediaRendition *rendition;
 };
 
-MediaRendition::MediaRendition(::MediaRendition *rendition) : MediaRendition(std::unique_ptr<::MediaRendition>(rendition)) { }
-
-MediaRendition::MediaRendition(std::unique_ptr<::MediaRendition> &&rendition) : d_ptr(new MediaRenditionPrivate(std::move(rendition))) { }
+MediaRendition::MediaRendition(::MediaRendition *rendition) : d_ptr(new MediaRenditionPrivate(rendition)) { }
 
 MediaRendition::~MediaRendition()
 {

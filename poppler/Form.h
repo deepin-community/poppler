@@ -6,7 +6,7 @@
 //
 // Copyright 2006 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright 2007, 2008, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright 2007-2010, 2012, 2015-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2007-2010, 2012, 2015-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright 2010 Mark Riedesel <mark@klowner.com>
 // Copyright 2011 Pino Toscano <pino@kde.org>
 // Copyright 2012 Fabio D'Urso <fabiodurso@hotmail.it>
@@ -27,8 +27,6 @@
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2022 Alexander Sulfrian <asulfrian@zedat.fu-berlin.de>
-// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright 2024 Pratham Gandhi <ppg.1382@gmail.com>
 //
 //========================================================================
 
@@ -39,14 +37,12 @@
 #include "CharTypes.h"
 #include "Object.h"
 #include "poppler_private_export.h"
-#include "SignatureInfo.h"
 
 #include <ctime>
 
 #include <optional>
 #include <set>
 #include <vector>
-#include <functional>
 
 class GooString;
 class Array;
@@ -57,10 +53,9 @@ class Annots;
 class LinkAction;
 class GfxResources;
 class PDFDoc;
+class SignatureInfo;
 class X509CertificateInfo;
-namespace CryptoSign {
-class VerificationInterface;
-}
+class SignatureHandler;
 
 enum FormFieldType
 {
@@ -142,7 +137,7 @@ public:
 
     LinkAction *getActivationAction(); // The caller should not delete the result
     std::unique_ptr<LinkAction> getAdditionalAction(Annot::FormAdditionalActionsType type);
-    bool setAdditionalAction(Annot::FormAdditionalActionsType t, const std::string &js);
+    bool setAdditionalAction(Annot::FormAdditionalActionsType t, const GooString &js);
 
     // return the unique ID corresponding to pageNum/fieldNum
     static int encodeID(unsigned pageNum, unsigned fieldNum);
@@ -257,7 +252,7 @@ public:
     const GooString *getExportVal(int i) const;
     // select the i-th choice
     void select(int i);
-    void setAppearanceChoiceContent(const GooString *new_content);
+
     // toggle selection of the i-th choice
     void toggle(int i);
 
@@ -299,20 +294,7 @@ public:
     void setSignatureType(FormSignatureType fst);
 
     // Use -1 for now as validationTime
-    // ocspRevocation and aiafetch might happen async in the Background
-    // doneCallback will be invoked once there is a result
-    // Note: Validation callback will likely happen from an auxillary
-    // thread and it is the caller of this method who is responsible
-    // for moving back to the main thread
-    // For synchronous code, don't provide validation callback
-    // and just call validateSignatureResult afterwards
-    // The returned SignatureInfo from this method does
-    // not have validated the certificate.
-    SignatureInfo *validateSignatureAsync(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA, const std::function<void()> &doneCallback);
-
-    /// Waits, if needed, on validation callback and
-    /// returns a signatureinfo with validated certificates
-    CertificateValidationStatus validateSignatureResult();
+    SignatureInfo *validateSignature(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA);
 
     // returns a list with the boundaries of the signed ranges
     // the elements of the list are of type Goffset
@@ -325,11 +307,11 @@ public:
     // field "ByteRange" in the dictionary "V".
     // Arguments reason and location are UTF-16 big endian strings with BOM. An empty string and nullptr are acceptable too.
     // Returns success.
-    bool signDocument(const std::string &filename, const std::string &certNickname, const std::string &password, const GooString *reason = nullptr, const GooString *location = nullptr, const std::optional<GooString> &ownerPassword = {},
+    bool signDocument(const char *filename, const char *certNickname, const char *digestName, const char *password, const GooString *reason = nullptr, const GooString *location = nullptr, const std::optional<GooString> &ownerPassword = {},
                       const std::optional<GooString> &userPassword = {});
 
     // Same as above but adds text, font color, etc.
-    bool signDocumentWithAppearance(const std::string &filename, const std::string &certNickname, const std::string &password, const GooString *reason = nullptr, const GooString *location = nullptr,
+    bool signDocumentWithAppearance(const char *filename, const char *certNickname, const char *digestName, const char *password, const GooString *reason = nullptr, const GooString *location = nullptr,
                                     const std::optional<GooString> &ownerPassword = {}, const std::optional<GooString> &userPassword = {}, const GooString &signatureText = {}, const GooString &signatureTextLeft = {}, double fontSize = {},
                                     double leftFontSize = {}, std::unique_ptr<AnnotColor> &&fontColor = {}, double borderWidth = {}, std::unique_ptr<AnnotColor> &&borderColor = {}, std::unique_ptr<AnnotColor> &&backgroundColor = {});
 
@@ -341,11 +323,11 @@ public:
     const GooString *getSignature() const;
 
 private:
-    bool createSignature(Object &vObj, Ref vRef, const GooString &name, int placeholderLength, const GooString *reason = nullptr, const GooString *location = nullptr);
+    bool createSignature(Object &vObj, Ref vRef, const GooString &name, const GooString *signature, const GooString *reason = nullptr, const GooString *location = nullptr);
     bool getObjectStartEnd(const GooString &filename, int objNum, Goffset *objStart, Goffset *objEnd, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword);
     bool updateOffsets(FILE *f, Goffset objStart, Goffset objEnd, Goffset *sigStart, Goffset *sigEnd, Goffset *fileSize);
 
-    bool updateSignature(FILE *f, Goffset sigStart, Goffset sigEnd, const GooString &signature);
+    bool updateSignature(FILE *f, Goffset sigStart, Goffset sigEnd, const GooString *signature);
 };
 
 //------------------------------------------------------------------------
@@ -554,9 +536,6 @@ public:
     const GooString *getExportVal(int i) const { return choices ? choices[i].exportVal : nullptr; }
     // For multi-select choices it returns the first one
     const GooString *getSelectedChoice() const;
-    const GooString *getAppearanceSelectedChoice() const { return appearanceSelectedChoice ? appearanceSelectedChoice : getSelectedChoice(); }
-
-    void setAppearanceChoiceContentCopy(const GooString *new_content);
 
     // select the i-th choice
     void select(int i);
@@ -610,7 +589,6 @@ protected:
     ChoiceOpt *choices;
     bool *defaultChoices;
     GooString *editedChoice;
-    GooString *appearanceSelectedChoice;
     int topIdx; // TI
 };
 
@@ -624,9 +602,7 @@ public:
     FormFieldSignature(PDFDoc *docA, Object &&dict, const Ref ref, FormField *parent, std::set<int> *usedParents);
 
     // Use -1 for now as validationTime
-    SignatureInfo *validateSignatureAsync(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA, const std::function<void()> &doneCallback);
-
-    CertificateValidationStatus validateSignatureResult();
+    SignatureInfo *validateSignature(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA);
 
     // returns a list with the boundaries of the signed ranges
     // the elements of the list are of type Goffset
@@ -663,7 +639,7 @@ public:
 
 private:
     void parseInfo();
-    void hashSignedDataBlock(CryptoSign::VerificationInterface *handler, Goffset block_len);
+    void hashSignedDataBlock(SignatureHandler *handler, Goffset block_len);
 
     FormSignatureType signature_type;
     Object byte_range;
@@ -674,7 +650,6 @@ private:
     double customAppearanceLeftFontSize = 20;
     Ref imageResource = Ref::INVALID();
     std::unique_ptr<X509CertificateInfo> certificate_info;
-    std::unique_ptr<CryptoSign::VerificationInterface> signature_handler;
 
     void print(int indent) override;
 };
@@ -707,10 +682,6 @@ public:
     // has the given fontFamily and fontStyle. This makes us relatively sure that we added that font ourselves
     std::string findFontInDefaultResources(const std::string &fontFamily, const std::string &fontStyle) const;
 
-    // Finds in the default resources a font that is suitable to create a signature annotation.
-    // If none is found then it is added to the default resources.
-    std::string findPdfFontNameToUseForSigning();
-
     struct AddFontResult
     {
         std::string fontName;
@@ -718,9 +689,8 @@ public:
     };
 
     // Finds in the system a font name matching the given fontFamily and fontStyle
-    // And adds it to the default resources dictionary, font name there will be popplerfontXXX except if forceName is true,
-    // in that case the font name will be fontFamily + " " + fontStyle (if fontStyle is empty just fontFamily)
-    AddFontResult addFontToDefaultResources(const std::string &fontFamily, const std::string &fontStyle, bool forceName = false);
+    // And adds it to the default resources dictionary, font name there will be popplerfontXXX
+    AddFontResult addFontToDefaultResources(const std::string &fontFamily, const std::string &fontStyle);
 
     // Finds in the default resources dictionary a font named popplerfontXXX that
     // emulates fontToEmulate and can draw the given char
@@ -752,9 +722,8 @@ public:
 
 private:
     // Finds in the system a font name matching the given fontFamily and fontStyle
-    // And adds it to the default resources dictionary, font name there will be popplerfontXXX except if forceName is true,
-    // in that case the font name will be fontFamily + " " + fontStyle (if fontStyle is empty just fontFamily)
-    AddFontResult addFontToDefaultResources(const std::string &filepath, int faceIndex, const std::string &fontFamily, const std::string &fontStyle, bool forceName = false);
+    // And adds it to the default resources dictionary, font name there will be popplerfontXXX
+    AddFontResult addFontToDefaultResources(const std::string &filepath, int faceIndex, const std::string &fontFamily, const std::string &fontStyle);
 
     AddFontResult doGetAddFontToDefaultResources(Unicode uChar, const GfxFont &fontToEmulate);
 

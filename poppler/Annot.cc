@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2006 Scott Turner <scotty1024@mac.com>
 // Copyright (C) 2007, 2008 Julien Rebetez <julienr@svn.gnome.org>
-// Copyright (C) 2007-2013, 2015-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2013, 2015-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007-2013, 2018 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2007, 2008 Iñigo Martínez <inigomartinez@gmail.com>
 // Copyright (C) 2007 Jeff Muizelaar <jeff@infidigm.net>
@@ -41,10 +41,10 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2018 Dileep Sankhla <sankhla.dileep96@gmail.com>
 // Copyright (C) 2018-2020 Tobias Deiminger <haxtibal@posteo.de>
-// Copyright (C) 2018-2020, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2018-2020, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Umang Malik <umang99m@gmail.com>
 // Copyright (C) 2019 João Netto <joaonetto901@gmail.com>
-// Copyright (C) 2020, 2024 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
+// Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2020 Katarina Behrens <Katarina.Behrens@cib.de>
 // Copyright (C) 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
 // Copyright (C) 2020 Nelson Benítez León <nbenitezl@gmail.com>
@@ -54,9 +54,7 @@
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright (C) 2022 Martin <martinbts@gmx.net>
 // Copyright (C) 2022 Andreas Naumann <42870-ANaumann85@users.noreply.gitlab.freedesktop.org>
-// Copyright (C) 2022, 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+// Copyright (C) 2022 Erich E. Hoover <erich.e.hoover@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -90,7 +88,6 @@
 #include "FileSpec.h"
 #include "DateInfo.h"
 #include "Link.h"
-#include "UTF.h"
 #include <cstring>
 #include <algorithm>
 
@@ -1504,8 +1501,8 @@ void Annot::setContents(std::unique_ptr<GooString> &&new_content)
     if (new_content) {
         contents = std::move(new_content);
         // append the unicode marker <FE FF> if needed
-        if (!hasUnicodeByteOrderMark(contents->toStr())) {
-            prependUnicodeByteOrderMark(contents->toNonConstStr());
+        if (!contents->hasUnicodeMarker()) {
+            contents->prependUnicodeMarker();
         }
     } else {
         contents = std::make_unique<GooString>();
@@ -2211,8 +2208,8 @@ void AnnotMarkup::setLabel(std::unique_ptr<GooString> &&new_label)
     if (new_label) {
         label = std::move(new_label);
         // append the unicode marker <FE FF> if needed
-        if (!hasUnicodeByteOrderMark(label->toStr())) {
-            prependUnicodeByteOrderMark(label->toNonConstStr());
+        if (!label->hasUnicodeMarker()) {
+            label->prependUnicodeMarker();
         }
     } else {
         label = std::make_unique<GooString>();
@@ -2936,8 +2933,8 @@ void AnnotFreeText::setStyleString(GooString *new_string)
     if (new_string) {
         styleString = std::make_unique<GooString>(new_string);
         // append the unicode marker <FE FF> if needed
-        if (!hasUnicodeByteOrderMark(styleString->toStr())) {
-            prependUnicodeByteOrderMark(styleString->toNonConstStr());
+        if (!styleString->hasUnicodeMarker()) {
+            styleString->prependUnicodeMarker();
         }
     } else {
         styleString = std::make_unique<GooString>();
@@ -3029,7 +3026,7 @@ public:
         double blockWidth;
         bool newFontNeeded = false;
         GooString outputText;
-        const bool isUnicode = hasUnicodeByteOrderMark(text->toStr());
+        const bool isUnicode = text->hasUnicodeMarker();
         int charCount;
 
         Annot::layoutText(text, &outputText, &i, *font, &blockWidth, availableWidth ? *availableWidth : 0.0, &charCount, noReencode, !noReencode ? &newFontNeeded : nullptr);
@@ -3038,7 +3035,7 @@ public:
             *availableWidth -= blockWidth;
         }
 
-        while (newFontNeeded && (!availableWidth || *availableWidth > 0 || (isUnicode && i == 2) || (!isUnicode && i == 0))) {
+        while (newFontNeeded && (!availableWidth || *availableWidth > 0)) {
             if (!form) {
                 // There's no fonts to look for, so just skip the characters
                 i += isUnicode ? 2 : 1;
@@ -3059,7 +3056,7 @@ public:
                     // Here we just layout one char, we don't know if the one afterwards can be layouted with the original font
                     GooString auxContents = GooString(text->toStr().substr(i, isUnicode ? 2 : 1));
                     if (isUnicode) {
-                        prependUnicodeByteOrderMark(auxContents.toNonConstStr());
+                        auxContents.prependUnicodeMarker();
                     }
                     int auxI = 0;
                     Annot::layoutText(&auxContents, &outputText, &auxI, *auxFont, &blockWidth, availableWidth ? *availableWidth : 0.0, &charCount, false, &newFontNeeded);
@@ -3069,9 +3066,7 @@ public:
                     }
                     // layoutText will always at least layout one character even if it doesn't fit in
                     // the given space which makes sense (except in the case of switching fonts, so we control if we ran out of space here manually)
-                    // we also need to allow the character if we have not layouted anything yet because otherwise we will end up in an infinite loop
-                    // because it is assumed we at least layout one character
-                    if (!availableWidth || *availableWidth > 0 || (isUnicode && i == 2) || (!isUnicode && i == 0)) {
+                    if (!availableWidth || *availableWidth > 0) {
                         i += isUnicode ? 2 : 1;
                         data.emplace_back(outputText.toStr(), auxFontName, blockWidth, charCount);
                     }
@@ -3134,36 +3129,6 @@ public:
     int consumedText;
 };
 
-double Annot::calculateFontSize(const Form *form, const GfxFont *font, const GooString *text, double wMax, double hMax, const bool forceZapfDingbats)
-{
-    const bool isUnicode = hasUnicodeByteOrderMark(text->toStr());
-    double fontSize;
-
-    for (fontSize = 20; fontSize > 1; --fontSize) {
-        const double availableWidthInFontSize = wMax / fontSize;
-        double y = hMax - 3;
-        int i = 0;
-        while (i < text->getLength()) {
-            GooString lineText(text->toStr().substr(i));
-            if (!hasUnicodeByteOrderMark(lineText.toStr()) && isUnicode) {
-                prependUnicodeByteOrderMark(lineText.toNonConstStr());
-            }
-            const HorizontalTextLayouter textLayouter(&lineText, form, font, availableWidthInFontSize, forceZapfDingbats);
-            y -= fontSize;
-            if (i == 0) {
-                i += textLayouter.consumedText;
-            } else {
-                i += textLayouter.consumedText - (isUnicode ? 2 : 0);
-            }
-        }
-        // approximate the descender for the last line
-        if (y >= 0.33 * fontSize) {
-            break;
-        }
-    }
-    return fontSize;
-}
-
 struct DrawMultiLineTextResult
 {
     std::string text;
@@ -3181,8 +3146,8 @@ static DrawMultiLineTextResult drawMultiLineText(const GooString &text, double a
     const double availableTextWidthInFontPtSize = availableWidth / fontSize;
     while (i < text.getLength()) {
         GooString lineText(text.toStr().substr(i));
-        if (!hasUnicodeByteOrderMark(lineText.toStr()) && hasUnicodeByteOrderMark(text.toStr())) {
-            prependUnicodeByteOrderMark(lineText.toNonConstStr());
+        if (!lineText.hasUnicodeMarker() && text.hasUnicodeMarker()) {
+            lineText.prependUnicodeMarker();
         }
         const HorizontalTextLayouter textLayouter(&lineText, form, &font, availableTextWidthInFontPtSize, false);
 
@@ -3235,7 +3200,7 @@ static DrawMultiLineTextResult drawMultiLineText(const GooString &text, double a
         if (i == 0) {
             i += textLayouter.consumedText;
         } else {
-            i += textLayouter.consumedText - (hasUnicodeByteOrderMark(text.toStr()) ? 2 : 0);
+            i += textLayouter.consumedText - (text.hasUnicodeMarker() ? 2 : 0);
         }
     }
     return result;
@@ -4217,7 +4182,7 @@ std::unique_ptr<LinkAction> AnnotWidget::getFormAdditionalAction(FormAdditionalA
     return nullptr;
 }
 
-bool AnnotWidget::setFormAdditionalAction(FormAdditionalActionsType formAdditionalActionType, const std::string &js)
+bool AnnotWidget::setFormAdditionalAction(FormAdditionalActionsType formAdditionalActionType, const GooString &js)
 {
     Object additionalActionsObject = additionalActions.fetch(doc->getXRef());
 
@@ -4285,7 +4250,7 @@ void Annot::layoutText(const GooString *text, GooString *outBuf, int *i, const G
     if (!text) {
         return;
     }
-    bool unicode = hasUnicodeByteOrderMark(text->toStr());
+    bool unicode = text->hasUnicodeMarker();
     bool spacePrev; // previous character was a space
 
     // State for backtracking when more text has been processed than fits within
@@ -4588,7 +4553,7 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
     // for a password field, replace all characters with asterisks
     if (flags & TurnTextToStarsDrawTextFlag) {
         int len;
-        if (hasUnicodeByteOrderMark(text->toStr())) {
+        if (text->hasUnicodeMarker()) {
             len = (text->getLength() - 2) / 2;
         } else {
             len = text->getLength();
@@ -4635,10 +4600,32 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
         // note: comb is ignored in multiline mode as mentioned in the spec
 
         const double wMax = dx - 2 * borderWidth - 4;
+        const bool isUnicode = text->hasUnicodeMarker();
 
         // compute font autosize
         if (fontSize == 0) {
-            fontSize = Annot::calculateFontSize(form, font, text, wMax, dy, forceZapfDingbats);
+            for (fontSize = 20; fontSize > 1; --fontSize) {
+                const double availableWidthInFontSize = wMax / fontSize;
+                double y = dy - 3;
+                int i = 0;
+                while (i < text->getLength()) {
+                    GooString lineText(text->toStr().substr(i));
+                    if (!lineText.hasUnicodeMarker() && isUnicode) {
+                        lineText.prependUnicodeMarker();
+                    }
+                    const HorizontalTextLayouter textLayouter(&lineText, form, font, availableWidthInFontSize, forceZapfDingbats);
+                    y -= fontSize;
+                    if (i == 0) {
+                        i += textLayouter.consumedText;
+                    } else {
+                        i += textLayouter.consumedText - (isUnicode ? 2 : 0);
+                    }
+                }
+                // approximate the descender for the last line
+                if (y >= 0.33 * fontSize) {
+                    break;
+                }
+            }
             daToks[tfPos + 1] = GooString().appendf("{0:.2f}", fontSize)->toStr();
         }
 
@@ -5234,8 +5221,8 @@ bool AnnotAppearanceBuilder::drawSignatureFieldText(const FormFieldSignature *fi
         Matrix matrix = { 1.0, 0.0, 0.0, 1.0, 0.0, 0.0 };
         matrix.scale(width, height);
         static const char *IMG_TMPL = "\nq {0:.1g} {1:.1g} {2:.1g} {3:.1g} {4:.1g} {5:.1g} cm /{6:s} Do Q\n";
-        const std::string imgBuffer = GooString::format(IMG_TMPL, matrix.m[0], matrix.m[1], matrix.m[2], matrix.m[3], matrix.m[4], matrix.m[5], imageResourceId);
-        append(imgBuffer.c_str());
+        const std::unique_ptr<GooString> imgBuffer = GooString::format(IMG_TMPL, matrix.m[0], matrix.m[1], matrix.m[2], matrix.m[3], matrix.m[4], matrix.m[5], imageResourceId);
+        append(imgBuffer->c_str());
     }
 
     const GooString &leftText = field->getCustomAppearanceLeftContent();
@@ -5290,7 +5277,7 @@ void AnnotAppearanceBuilder::drawSignatureFieldText(const GooString &text, const
     if (centerVertically) {
         const double outTextHeight = textCommands.nLines * da.getFontPtSize();
         if (outTextHeight < height) {
-            yDelta = height - (height - outTextHeight) / 2;
+            yDelta -= (height - outTextHeight) / 2;
         }
     }
     appendf("BT 1 0 0 1 {0:.2f} {1:.2f} Tm\n", leftMargin + textmargin, yDelta);
@@ -5313,7 +5300,7 @@ bool AnnotAppearanceBuilder::drawFormFieldChoice(const FormFieldChoice *fieldCho
     }
 
     if (fieldChoice->isCombo()) {
-        selected = fieldChoice->getAppearanceSelectedChoice();
+        selected = fieldChoice->getSelectedChoice();
         if (selected) {
             return drawText(selected, form, da, resources, border, appearCharacs, rect, quadding, xref, resourcesDict, EmitMarkedContentDrawTextFlag);
             //~ Acrobat draws a popup icon on the right side
@@ -5326,8 +5313,19 @@ bool AnnotAppearanceBuilder::drawFormFieldChoice(const FormFieldChoice *fieldCho
     return true;
 }
 
+static bool insertIfNotAlreadyPresent(Ref r, std::set<int> *alreadySeenDicts)
+{
+    if (r == Ref::INVALID()) {
+        return true;
+    }
+
+    // std::pair<iterator,bool>
+    const auto insertResult = alreadySeenDicts->insert(r.num);
+    return insertResult.second;
+}
+
 // Should we also merge Arrays?
-static void recursiveMergeDicts(Dict *primary, const Dict *secondary, RefRecursionChecker *alreadySeenDicts)
+static void recursiveMergeDicts(Dict *primary, const Dict *secondary, std::set<int> *alreadySeenDicts)
 {
     for (int i = 0; i < secondary->getLength(); ++i) {
         const char *key = secondary->getKey(i);
@@ -5340,7 +5338,7 @@ static void recursiveMergeDicts(Dict *primary, const Dict *secondary, RefRecursi
                 Ref secondaryRef;
                 Object secondaryObj = secondary->lookup(key, &secondaryRef);
                 if (secondaryObj.isDict()) {
-                    if (!alreadySeenDicts->insert(primaryRef) || !alreadySeenDicts->insert(secondaryRef)) {
+                    if (!insertIfNotAlreadyPresent(primaryRef, alreadySeenDicts) || !insertIfNotAlreadyPresent(secondaryRef, alreadySeenDicts)) {
                         // bad PDF
                         return;
                     }
@@ -5353,7 +5351,7 @@ static void recursiveMergeDicts(Dict *primary, const Dict *secondary, RefRecursi
 
 static void recursiveMergeDicts(Dict *primary, const Dict *secondary)
 {
-    RefRecursionChecker alreadySeenDicts;
+    std::set<int> alreadySeenDicts;
     recursiveMergeDicts(primary, secondary, &alreadySeenDicts);
 }
 
@@ -5462,12 +5460,8 @@ void AnnotWidget::updateAppearanceStream()
 
     // There's no need to create a new appearance stream if NeedAppearances is
     // set, because it will be ignored next time anyway.
-    // except if signature type; most readers can't figure out how to create an
-    // appearance for those and thus renders nothing.
     if (form && form->getNeedAppearances()) {
-        if (field->getType() != FormFieldType::formSignature) {
-            return;
-        }
+        return;
     }
 
     // Create the new appearance
@@ -5507,9 +5501,9 @@ void AnnotWidget::draw(Gfx *gfx, bool printing)
 
     // Only construct the appearance stream when
     // - annot doesn't have an AP or
-    // - NeedAppearances is true and it isn't a Signature. There isn't enough data in our objects to generate it for signatures
+    // - NeedAppearances is true
     if (field) {
-        if (appearance.isNull() || (field->getType() != FormFieldType::formSignature && form && form->getNeedAppearances())) {
+        if (appearance.isNull() || (form && form->getNeedAppearances())) {
             generateFieldAppearance();
         }
     }
@@ -5841,8 +5835,8 @@ void AnnotStamp::generateStampDefaultAppearance()
     }
 
     const double bboxArray[4] = { 0, 0, rect->x2 - rect->x1, rect->y2 - rect->y1 };
-    const std::string scale = GooString::format("{0:.6g} 0 0 {1:.6g} 0 0 cm\nq\n", bboxArray[2] / stampUnscaledWidth, bboxArray[3] / stampUnscaledHeight);
-    defaultAppearanceBuilder.append(scale.c_str());
+    const std::unique_ptr<GooString> scale = GooString::format("{0:.6g} 0 0 {1:.6g} 0 0 cm\nq\n", bboxArray[2] / stampUnscaledWidth, bboxArray[3] / stampUnscaledHeight);
+    defaultAppearanceBuilder.append(scale->c_str());
     defaultAppearanceBuilder.append(stampCode);
     defaultAppearanceBuilder.append("Q\n");
 
@@ -6020,7 +6014,6 @@ void AnnotGeometry::setInteriorColor(std::unique_ptr<AnnotColor> &&new_color)
         interiorColor = std::move(new_color);
     } else {
         interiorColor = nullptr;
-        update("IC", Object(objNull));
     }
     invalidateAppearance();
 }
@@ -6253,9 +6246,6 @@ void AnnotPolygon::setInteriorColor(std::unique_ptr<AnnotColor> &&new_color)
         Object obj1 = new_color->writeToObject(doc->getXRef());
         update("IC", std::move(obj1));
         interiorColor = std::move(new_color);
-    } else {
-        interiorColor = nullptr;
-        update("IC", Object(objNull));
     }
     invalidateAppearance();
 }

@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2008 Julien Rebetez <julien@fhtagn.net>
-// Copyright (C) 2008, 2010, 2011, 2016-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2011, 2016-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Stefan Thomas <thomas@eload24.com>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
@@ -33,8 +33,6 @@
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
 // Copyright (C) 2021 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
-// Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -47,7 +45,6 @@
 #include <atomic>
 #include <cstdio>
 #include <vector>
-#include <span>
 
 #include "poppler-config.h"
 #include "poppler_private_export.h"
@@ -173,15 +170,8 @@ public:
             length += readChars;
             if (readChars == charsToRead) {
                 if (lookChar() != EOF) {
-                    if (unlikely(checkedAdd(size, sizeIncrement, &size))) {
-                        error(errInternal, -1, "toUnsignedChars size grew too much");
-                        return {};
-                    }
+                    size += sizeIncrement;
                     charsToRead = sizeIncrement;
-                    if (unlikely(static_cast<size_t>(size) > buf.max_size())) {
-                        error(errInternal, -1, "toUnsignedChars size grew too much");
-                        return {};
-                    }
                     buf.resize(size);
                 } else {
                     continueReading = false;
@@ -304,8 +294,6 @@ public:
     // Put a char in the stream
     virtual void put(char c) = 0;
 
-    virtual size_t write(std::span<unsigned char> data) = 0;
-
     virtual void printf(const char *format, ...) GCC_PRINTF_FORMAT(2, 3) = 0;
 };
 
@@ -325,8 +313,6 @@ public:
 
     void put(char c) override;
 
-    size_t write(std::span<unsigned char> data) override;
-
     void printf(const char *format, ...) override GCC_PRINTF_FORMAT(2, 3);
 
 private:
@@ -343,6 +329,7 @@ private:
 class POPPLER_PRIVATE_EXPORT BaseStream : public Stream
 {
 public:
+    // TODO Mirar si puedo hacer que dictA sea un puntero
     BaseStream(Object &&dictA, Goffset lengthA);
     ~BaseStream() override;
     virtual BaseStream *copy() = 0;
@@ -681,7 +668,7 @@ public:
 
     int lookChar() override { return (bufPtr < bufEnd) ? (*bufPtr & 0xff) : EOF; }
 
-    Goffset getPos() override { return bufPtr - buf; }
+    Goffset getPos() override { return (int)(bufPtr - buf); }
 
     void setPos(Goffset pos, int dir = 0) override
     {

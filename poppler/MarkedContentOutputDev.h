@@ -6,7 +6,7 @@
 //
 // Copyright 2013 Igalia S.L.
 // Copyright 2018-2021 Albert Astals Cid <aacid@kde.org>
-// Copyright 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2021 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 //========================================================================
@@ -100,8 +100,8 @@ public:
     void startPage(int pageNum, GfxState *state, XRef *xref) override;
     void endPage() override;
 
-    void beginForm(Object * /* obj */, Ref id) override;
-    void endForm(Object * /* obj */, Ref id) override;
+    void beginForm(Ref id) override;
+    void endForm(Ref id) override;
 
     void drawChar(GfxState *state, double xx, double yy, double dx, double dy, double ox, double oy, CharCode c, int nBytes, const Unicode *u, int uLen) override;
 

@@ -123,8 +123,6 @@ static std::ostream &operator<<(std::ostream &out, Poppler::SignatureValidationI
     case Poppler::SignatureValidationInfo::CertificateNotVerified:
         out << "NotVerifiedYet";
         break;
-    case Poppler::SignatureValidationInfo::CertificateVerificationInProgress:
-        out << "InProgress";
     }
     return out;
 }
@@ -254,10 +252,9 @@ int main(int argc, char **argv)
 
                 case Poppler::FormField::FormSignature: {
                     const Poppler::FormFieldSignature *signatureForm = static_cast<const Poppler::FormFieldSignature *>(form.get());
-                    const Poppler::SignatureValidationInfo svi = signatureForm->validateAsync(Poppler::FormFieldSignature::ValidateVerifyCertificate).first;
-                    const Poppler::SignatureValidationInfo::CertificateStatus certStatus = signatureForm->validateResult();
+                    const Poppler::SignatureValidationInfo svi = signatureForm->validate(Poppler::FormFieldSignature::ValidateVerifyCertificate);
                     std::cout << "\t\t\tSignatureStatus: " << svi.signatureStatus() << std::endl;
-                    std::cout << "\t\t\tCertificateStatus: " << certStatus << std::endl;
+                    std::cout << "\t\t\tCertificateStatus: " << svi.certificateStatus() << std::endl;
                     if (svi.signerName().isEmpty() == false) {
                         std::cout << "\t\t\tSignerName: " << svi.signerName() << std::endl;
                     } else {

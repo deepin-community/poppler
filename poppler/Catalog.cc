@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005-2013, 2015, 2017-2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2013, 2015, 2017-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jeff Muizelaar <jrmuizel@nit.ca>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2005 Marco Pesenti Gritti <mpg@redhat.com>
@@ -40,9 +40,6 @@
 // Copyright (C) 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
-// Copyright (C) 2023 Ilaï Deutel <idtl@google.com>
-// Copyright (C) 2024 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -53,6 +50,7 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include "goo/gmem.h"
 #include "Object.h"
 #include "PDFDoc.h"
 #include "XRef.h"
@@ -347,9 +345,9 @@ bool Catalog::cachePageTree(int page)
 
 int Catalog::findPage(const Ref pageRef)
 {
-    const int count = getNumPages();
+    int i;
 
-    for (int i = 0; i < count; ++i) {
+    for (i = 0; i < getNumPages(); ++i) {
         Ref *ref = getPageRef(i + 1);
         if (ref != nullptr && *ref == pageRef) {
             return i + 1;
@@ -640,8 +638,23 @@ Catalog::PageLayout Catalog::getPageLayout()
     return pageLayout;
 }
 
-NameTree::NameTree() = default;
-NameTree::~NameTree() = default;
+NameTree::NameTree()
+{
+    size = 0;
+    length = 0;
+    entries = nullptr;
+}
+
+NameTree::~NameTree()
+{
+    int i;
+
+    for (i = 0; i < length; i++) {
+        delete entries[i];
+    }
+
+    gfree(entries);
+}
 
 NameTree::Entry::Entry(Array *array, int index)
 {
@@ -658,17 +671,40 @@ NameTree::Entry::Entry(Array *array, int index)
 
 NameTree::Entry::~Entry() { }
 
+void NameTree::addEntry(Entry *entry)
+{
+    if (length == size) {
+        if (length == 0) {
+            size = 8;
+        } else {
+            size *= 2;
+        }
+        entries = (Entry **)grealloc(entries, sizeof(Entry *) * size);
+    }
+
+    entries[length] = entry;
+    ++length;
+}
+
+int NameTree::Entry::cmpEntry(const void *voidEntry, const void *voidOtherEntry)
+{
+    Entry *entry = *(NameTree::Entry **)voidEntry;
+    Entry *otherEntry = *(NameTree::Entry **)voidOtherEntry;
+
+    return entry->name.cmp(&otherEntry->name);
+}
+
 void NameTree::init(XRef *xrefA, Object *tree)
 {
     xref = xrefA;
-    RefRecursionChecker seen;
+    std::set<int> seen;
     parse(tree, seen);
-    if (!entries.empty()) {
-        std::sort(entries.begin(), entries.end(), [](const auto &first, const auto &second) { return first->name.cmp(&second->name) < 0; });
+    if (entries && length > 0) {
+        qsort(entries, length, sizeof(Entry *), Entry::cmpEntry);
     }
 }
 
-void NameTree::parse(const Object *tree, RefRecursionChecker &seen)
+void NameTree::parse(const Object *tree, std::set<int> &seen)
 {
     if (!tree->isDict()) {
         return;
@@ -678,24 +714,34 @@ void NameTree::parse(const Object *tree, RefRecursionChecker &seen)
     Object names = tree->dictLookup("Names");
     if (names.isArray()) {
         for (int i = 0; i < names.arrayGetLength(); i += 2) {
-            auto entry = std::make_unique<Entry>(names.getArray(), i);
-            entries.push_back(std::move(entry));
+            NameTree::Entry *entry;
+
+            entry = new Entry(names.getArray(), i);
+            addEntry(entry);
         }
     }
 
     // root or intermediate node
     Ref ref;
     const Object kids = tree->getDict()->lookup("Kids", &ref);
-    if (!seen.insert(ref)) {
-        error(errSyntaxError, -1, "loop in NameTree (numObj: {0:d})", ref.num);
-        return;
+    if (ref != Ref::INVALID()) {
+        const int numObj = ref.num;
+        if (seen.find(numObj) != seen.end()) {
+            error(errSyntaxError, -1, "loop in NameTree (numObj: {0:d})", numObj);
+            return;
+        }
+        seen.insert(numObj);
     }
     if (kids.isArray()) {
         for (int i = 0; i < kids.arrayGetLength(); ++i) {
             const Object kid = kids.getArray()->get(i, &ref);
-            if (!seen.insert(ref)) {
-                error(errSyntaxError, -1, "loop in NameTree (numObj: {0:d})", ref.num);
-                continue;
+            if (ref != Ref::INVALID()) {
+                const int numObj = ref.num;
+                if (seen.find(numObj) != seen.end()) {
+                    error(errSyntaxError, -1, "loop in NameTree (numObj: {0:d})", numObj);
+                    continue;
+                }
+                seen.insert(numObj);
             }
             if (kid.isDict()) {
                 parse(&kid, seen);
@@ -704,11 +750,20 @@ void NameTree::parse(const Object *tree, RefRecursionChecker &seen)
     }
 }
 
+int NameTree::Entry::cmp(const void *voidKey, const void *voidEntry)
+{
+    GooString *key = (GooString *)voidKey;
+    Entry *entry = *(NameTree::Entry **)voidEntry;
+
+    return key->cmp(&entry->name);
+}
+
 Object NameTree::lookup(const GooString *name)
 {
-    auto entry = std::lower_bound(entries.begin(), entries.end(), name, [](const auto &element, const GooString *n) { return element->name.cmp(n) < 0; });
+    Entry **entry;
 
-    if (entry != entries.end() && (*entry)->name.cmp(name) == 0) {
+    entry = (Entry **)bsearch(name, entries, length, sizeof(Entry *), Entry::cmp);
+    if (entry != nullptr) {
         return (*entry)->value.fetch(xref);
     } else {
         error(errSyntaxError, -1, "failed to look up ({0:s})", name->c_str());
@@ -718,7 +773,7 @@ Object NameTree::lookup(const GooString *name)
 
 Object *NameTree::getValue(int index)
 {
-    if (size_t(index) < entries.size()) {
+    if (index < length) {
         return &entries[index]->value;
     } else {
         return nullptr;
@@ -727,7 +782,7 @@ Object *NameTree::getValue(int index)
 
 const GooString *NameTree::getName(int index) const
 {
-    if (size_t(index) < entries.size()) {
+    if (index < length) {
         return &entries[index]->name;
     } else {
         return nullptr;
@@ -820,13 +875,7 @@ int Catalog::getNumPages()
                 numPages = 0;
             }
         } else {
-            if (obj.isInt()) {
-                numPages = obj.getInt();
-            } else if (obj.isInt64()) {
-                numPages = obj.getInt64();
-            } else {
-                numPages = obj.getNum();
-            }
+            numPages = (int)obj.getNum();
             if (numPages <= 0) {
                 error(errSyntaxError, -1, "Invalid page count {0:d}", numPages);
                 numPages = 0;
@@ -1070,7 +1119,6 @@ void Catalog::setAcroFormModified()
     if (acroFormRef != Ref::INVALID()) {
         xref->setModifiedObject(&acroForm, acroFormRef);
     } else {
-        catDict.dictSet("AcroForm", acroForm.copy());
         xref->setModifiedObject(&catDict, { xref->getRootNum(), xref->getRootGen() });
     }
 }

@@ -21,11 +21,11 @@
 // Copyright (C) 2008 Hugo Mercier <hmercier31@gmail.com>
 // Copyright (C) 2008 Pino Toscano <pino@kde.org>
 // Copyright (C) 2008 Tomas Are Haavet <tomasare@gmail.com>
-// Copyright (C) 2009-2011, 2013, 2016-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009-2011, 2013, 2016-2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2012, 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2012, 2015 Tobias Koenig <tokoe@kdab.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2013, 2017, 2023 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Dileep Sankhla <sankhla.dileep96@gmail.com>
 // Copyright (C) 2018-2020 Tobias Deiminger <haxtibal@posteo.de>
@@ -42,7 +42,6 @@
 // Copyright (C) 2021 Mahmoud Ahmed Khalil <mahmoudkhalil11@gmail.com>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright (C) 2022 Martin <martinbts@gmx.net>
-// Copyright (C) 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -716,8 +715,6 @@ public:
     Annot(PDFDoc *docA, Object &&dictObject);
     Annot(PDFDoc *docA, Object &&dictObject, const Object *obj);
     bool isOk() { return ok; }
-
-    static double calculateFontSize(const Form *form, const GfxFont *font, const GooString *text, const double wMax, const double hMax, const bool forceZapfDingbats = {});
 
     void incRefCnt();
     void decRefCnt();
@@ -1475,7 +1472,7 @@ public:
     std::unique_ptr<LinkAction> getFormAdditionalAction(FormAdditionalActionsType type);
     Dict *getParent() { return parent; }
 
-    bool setFormAdditionalAction(FormAdditionalActionsType type, const std::string &js);
+    bool setFormAdditionalAction(FormAdditionalActionsType type, const GooString &js);
 
     void setField(FormField *f) { field = f; };
 
@@ -1760,7 +1757,7 @@ private:
 // Annots
 //------------------------------------------------------------------------
 
-class POPPLER_PRIVATE_EXPORT Annots
+class Annots
 {
 public:
     // Build a list of Annot objects and call setPage on them

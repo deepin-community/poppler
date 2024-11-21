@@ -25,7 +25,6 @@
 // Copyright (C) 2015 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2021, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -98,8 +97,11 @@ struct GfxFontCIDWidths
     double defWidth; // default char width
     double defHeight; // default char height
     double defVY; // default origin position
-    std::vector<GfxFontCIDWidthExcep> exceps; // exceptions
-    std::vector<GfxFontCIDWidthExcepV> excepsV; // exceptions for vertical font
+    GfxFontCIDWidthExcep *exceps; // exceptions
+    int nExceps; // number of valid entries in exceps
+    GfxFontCIDWidthExcepV * // exceptions for vertical font
+            excepsV;
+    int nExcepsV; // number of valid entries in excepsV
 };
 
 //------------------------------------------------------------------------
@@ -274,8 +276,7 @@ public:
 
     // Locate the font file for this font.  If <ps> is not null, includes PS
     // printer-resident fonts.  Returns std::optional without a value on failure.
-    // substituteFontName is passed down to the GlobalParams::findSystemFontFile/findBase14FontFile call
-    std::optional<GfxFontLoc> locateFont(XRef *xref, PSOutputDev *ps, GooString *substituteFontName = nullptr);
+    std::optional<GfxFontLoc> locateFont(XRef *xref, PSOutputDev *ps);
 
     // Read an external or embedded font file into a buffer.
     std::optional<std::vector<unsigned char>> readEmbFontFile(XRef *xref);
