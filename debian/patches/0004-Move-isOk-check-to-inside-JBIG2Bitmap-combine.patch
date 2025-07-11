@@ -1,0 +1,37 @@
+From d8aa58a1c931738bdba4ffaae1a80a4ecfbb36bf Mon Sep 17 00:00:00 2001
+From: Albert Astals Cid <aacid@kde.org>
+Date: Mon, 31 Mar 2025 14:35:49 +0200
+Subject: Move isOk check to inside JBIG2Bitmap::combine
+
+---
+ poppler/JBIG2Stream.cc | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/poppler/JBIG2Stream.cc b/poppler/JBIG2Stream.cc
+index bdc51d0d..3c92e707 100644
+--- a/poppler/JBIG2Stream.cc
++++ b/poppler/JBIG2Stream.cc
+@@ -770,6 +770,9 @@ void JBIG2Bitmap::combine(JBIG2Bitmap *bitmap, int x, int y, unsigned int combOp
+     unsigned int src0, src1, src, dest, s1, s2, m1, m2, m3;
+     bool oneByte;
+ 
++    if (unlikely(!isOk())) {
++        return;
++    }
+     // check for the pathological case where y = -2^31
+     if (y < -0x7fffffff) {
+         return;
+@@ -2200,9 +2203,7 @@ void JBIG2Stream::readTextRegionSeg(unsigned int segNum, bool imm, bool lossless
+             if (pageH == 0xffffffff && y + h > curPageH) {
+                 pageBitmap->expand(y + h, pageDefPixel);
+             }
+-            if (pageBitmap->isOk()) {
+-                pageBitmap->combine(bitmap.get(), x, y, extCombOp);
+-            }
++            pageBitmap->combine(bitmap.get(), x, y, extCombOp);
+ 
+             // store the region bitmap
+         } else {
+-- 
+2.30.2
+

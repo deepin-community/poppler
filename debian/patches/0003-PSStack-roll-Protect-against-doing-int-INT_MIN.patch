@@ -1,0 +1,25 @@
+From a165d7c184a75c8511354c8972aa8176928e239b Mon Sep 17 00:00:00 2001
+From: Albert Astals Cid <aacid@kde.org>
+Date: Mon, 24 Mar 2025 00:44:54 +0100
+Subject: PSStack::roll: Protect against doing int = -INT_MIN
+
+---
+ poppler/Function.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/poppler/Function.cc b/poppler/Function.cc
+index 043ae8e9..65888a03 100644
+--- a/poppler/Function.cc
++++ b/poppler/Function.cc
+@@ -1066,7 +1066,7 @@ void PSStack::roll(int n, int j)
+     PSObject obj;
+     int i, k;
+ 
+-    if (unlikely(n == 0)) {
++    if (unlikely(n == 0 || j == INT_MIN)) {
+         return;
+     }
+     if (j >= 0) {
+-- 
+2.30.2
+
