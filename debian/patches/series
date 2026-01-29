@@ -2,3 +2,4 @@
 0002-JBIG2Bitmap-combine-Fix-crash-on-malformed-files.patch
 0003-PSStack-roll-Protect-against-doing-int-INT_MIN.patch
 0004-Move-isOk-check-to-inside-JBIG2Bitmap-combine.patch
+CVE-2024-6239.patch
