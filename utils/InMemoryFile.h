@@ -45,15 +45,11 @@ private:
 public:
     InMemoryFile();
 
-public:
     /* Returns a file handle for this file. This is scoped to this object
      * and must be fclosed() by the caller before destruction. */
     FILE *open(const char *mode);
 
-    const std::vector<char> &getBuffer() const
-    {
-        return data;
-    }
+    const std::vector<char> &getBuffer() const { return data; }
 };
 
 #endif // IN_MEMORY_FILE_H

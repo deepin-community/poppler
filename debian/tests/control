@@ -1,11 +1,12 @@
 Tests: cpp
-Depends: build-essential, pkg-config, libpoppler-cpp-dev, cups-filters:native
+Depends: build-essential, cups-filters:native, libpoppler-cpp-dev, pkgconf
 
 Tests: glib
-Depends: build-essential, pkg-config, libpoppler-glib-dev, cups-filters:native
+Depends: build-essential, cups-filters:native, libpoppler-glib-dev, pkgconf
 
 Tests: qt5
-Depends: build-essential, pkg-config, libpoppler-qt5-dev, cups-filters:native
+Depends: build-essential, cups-filters:native, libpoppler-qt5-dev, pkgconf
 
 Tests: qt6
-Depends: build-essential, pkg-config, libpoppler-qt6-dev, cups-filters:native
+Architecture: hurd-any alpha amd64 arm64 armel armhf hppa loong64 m68k mips64el powerpc ppc64 ppc64el riscv64 s390x sh4 sparc64
+Depends: build-essential, cups-filters:native, libpoppler-qt6-dev, pkgconf

@@ -17,12 +17,13 @@
 // Copyright (C) 2008 Hugo Mercier <hmercier31@gmail.com>
 // Copyright (C) 2010, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2012 Tobias Koening <tobias.koenig@kdab.com>
-// Copyright (C) 2018-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2018-2023 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Marek Kasik <mkasik@redhat.com>
+// Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -64,6 +65,7 @@ enum LinkActionKind
     actionOCGState, // Set-OCG-State action
     actionHide, // Hide action
     actionResetForm, // ResetForm action
+    actionSubmitForm, // SubmitForm action
     actionUnknown // anything else
 };
 
@@ -412,7 +414,7 @@ public:
     LinkActionKind getKind() const override { return actionJavaScript; }
     const std::string &getScript() const { return js; }
 
-    static Object createObject(XRef *xref, const GooString &js);
+    static Object createObject(XRef *xref, const std::string &js);
 
 private:
     std::string js;
@@ -513,6 +515,50 @@ public:
 private:
     std::vector<std::string> fields;
     bool exclude;
+};
+
+//------------------------------------------------------------------------
+// LinkSubmitForm
+//------------------------------------------------------------------------
+
+class POPPLER_PRIVATE_EXPORT LinkSubmitForm : public LinkAction
+{
+public:
+    enum SubmitFormFlag
+    {
+        NoOpFlag = 0,
+        ExcludeFlag = 1,
+        IncludeNoValueFieldsFlag = 1 << 1,
+        ExportFormatFlag = 1 << 2,
+        GetMethodFlag = 1 << 3,
+        SubmitCoordinatesFlag = 1 << 4,
+        XFDFFlag = 1 << 5,
+        IncludeAppendSavesFlag = 1 << 6,
+        IncludeAnnotationsFlag = 1 << 7,
+        SubmitPDFFlag = 1 << 8,
+        CanonicalFormatFlag = 1 << 9,
+        ExclNonUserAnnotsFlag = 1 << 10,
+        ExclFKeyFlag = 1 << 11,
+        // 13th high bit flag is undefined
+        EmbedFormFlag = 1 << 13,
+    };
+
+    // Build a LinkSubmitForm
+    explicit LinkSubmitForm(const Object *submitObj);
+
+    ~LinkSubmitForm() override;
+
+    bool isOk() const override { return !url.empty(); }
+
+    LinkActionKind getKind() const override { return actionSubmitForm; }
+    const std::vector<std::string> &getFields() const { return fields; };
+    const std::string &getUrl() const { return url; };
+    uint32_t getFlags() const { return flags; };
+
+private:
+    std::vector<std::string> fields;
+    std::string url;
+    uint32_t flags = 0;
 };
 
 //------------------------------------------------------------------------

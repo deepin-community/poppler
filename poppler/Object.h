@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2008 Kees Cook <kees@outflux.net>
-// Copyright (C) 2008, 2010, 2017-2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2017-2021, 2023, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Jakub Wilk <jwilk@jwilk.net>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
@@ -25,6 +25,8 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
+// Copyright (C) 2023 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -46,7 +48,7 @@
 #include "poppler_private_export.h"
 
 #define OBJECT_TYPE_CHECK(wanted_type)                                                                                                                                                                                                         \
-    if (unlikely(type != wanted_type)) {                                                                                                                                                                                                       \
+    if (unlikely(type != (wanted_type))) {                                                                                                                                                                                                     \
         error(errInternal, 0,                                                                                                                                                                                                                  \
               "Call to Object where the object was type {0:d}, "                                                                                                                                                                               \
               "not the expected type {1:d}",                                                                                                                                                                                                   \
@@ -55,7 +57,7 @@
     }
 
 #define OBJECT_2TYPES_CHECK(wanted_type1, wanted_type2)                                                                                                                                                                                        \
-    if (unlikely(type != wanted_type1) && unlikely(type != wanted_type2)) {                                                                                                                                                                    \
+    if (unlikely(type != (wanted_type1)) && unlikely(type != (wanted_type2))) {                                                                                                                                                                \
         error(errInternal, 0,                                                                                                                                                                                                                  \
               "Call to Object where the object was type {0:d}, "                                                                                                                                                                               \
               "not the expected type {1:d} or {2:d}",                                                                                                                                                                                          \
@@ -64,7 +66,7 @@
     }
 
 #define OBJECT_3TYPES_CHECK(wanted_type1, wanted_type2, wanted_type3)                                                                                                                                                                          \
-    if (unlikely(type != wanted_type1) && unlikely(type != wanted_type2) && unlikely(type != wanted_type3)) {                                                                                                                                  \
+    if (unlikely(type != (wanted_type1)) && unlikely(type != (wanted_type2)) && unlikely(type != (wanted_type3))) {                                                                                                                            \
         error(errInternal, 0,                                                                                                                                                                                                                  \
               "Call to Object where the object was type {0:d}, "                                                                                                                                                                               \
               "not the expected type {1:d}, {2:d} or {3:d}",                                                                                                                                                                                   \
@@ -112,6 +114,44 @@ inline bool operator<(const Ref lhs, const Ref rhs) noexcept
     }
     return lhs.gen < rhs.gen;
 }
+
+struct RefRecursionChecker
+{
+    RefRecursionChecker() = default;
+
+    RefRecursionChecker(const RefRecursionChecker &) = delete;
+    RefRecursionChecker &operator=(const RefRecursionChecker &) = delete;
+
+    bool insert(Ref ref)
+    {
+        if (ref == Ref::INVALID()) {
+            return true;
+        }
+
+        // insert returns std::pair<iterator,bool>
+        // where the bool is whether the insert succeeded
+        return alreadySeenRefs.insert(ref.num).second;
+    }
+
+    void remove(Ref ref) { alreadySeenRefs.erase(ref.num); }
+
+private:
+    std::set<int> alreadySeenRefs;
+};
+
+struct RefRecursionCheckerRemover
+{
+    // Removes ref from c when this object is removed
+    RefRecursionCheckerRemover(RefRecursionChecker &c, Ref r) : checker(c), ref(r) { }
+    ~RefRecursionCheckerRemover() { checker.remove(ref); }
+
+    RefRecursionCheckerRemover(const RefRecursionCheckerRemover &) = delete;
+    RefRecursionCheckerRemover &operator=(const RefRecursionCheckerRemover &) = delete;
+
+private:
+    RefRecursionChecker &checker;
+    Ref ref;
+};
 
 namespace std {
 
@@ -186,18 +226,22 @@ public:
         type = objReal;
         real = realA;
     }
-    explicit Object(GooString *stringA)
+    explicit Object(std::unique_ptr<GooString> stringA)
     {
         assert(stringA);
         type = objString;
-        string = stringA;
+        string = stringA.release();
     }
-    Object(ObjType typeA, GooString *stringA)
+    explicit Object(std::string &&stringA)
+    {
+        type = objString;
+        string = new GooString(stringA);
+    }
+    Object(ObjType typeA, std::string &&stringA)
     {
         assert(typeA == objHexString);
-        assert(stringA);
         type = typeA;
-        string = stringA;
+        string = new GooString(stringA);
     }
     Object(ObjType typeA, const char *stringA)
     {
@@ -240,7 +284,7 @@ public:
 
     Object(Object &&other) noexcept
     {
-        std::memcpy(reinterpret_cast<void *>(this), &other, sizeof(Object));
+        std::memcpy(reinterpret_cast<void *>(this), &other, sizeof(Object)); // NOLINT(bugprone-undefined-memory-manipulation)
         other.type = objDead;
     }
 
@@ -248,7 +292,7 @@ public:
     {
         free();
 
-        std::memcpy(reinterpret_cast<void *>(this), &other, sizeof(Object));
+        std::memcpy(reinterpret_cast<void *>(this), &other, sizeof(Object)); // NOLINT(bugprone-undefined-memory-manipulation)
         other.type = objDead;
 
         return *this;
@@ -492,7 +536,7 @@ public:
     const Object &dictGetValNF(int i) const;
 
     // Stream accessors.
-    void streamReset();
+    [[nodiscard]] bool streamReset();
     void streamClose();
     int streamGetChar();
     int streamGetChars(int nChars, unsigned char *buffer);
@@ -538,141 +582,16 @@ private:
 
 #include "Array.h"
 
-inline int Object::arrayGetLength() const
-{
-    OBJECT_TYPE_CHECK(objArray);
-    return array->getLength();
-}
-
-inline void Object::arrayAdd(Object &&elem)
-{
-    OBJECT_TYPE_CHECK(objArray);
-    array->add(std::move(elem));
-}
-
-inline void Object::arrayRemove(int i)
-{
-    OBJECT_TYPE_CHECK(objArray);
-    array->remove(i);
-}
-
-inline Object Object::arrayGet(int i, int recursion = 0) const
-{
-    OBJECT_TYPE_CHECK(objArray);
-    return array->get(i, recursion);
-}
-
-inline const Object &Object::arrayGetNF(int i) const
-{
-    OBJECT_TYPE_CHECK(objArray);
-    return array->getNF(i);
-}
-
 //------------------------------------------------------------------------
 // Dict accessors.
 //------------------------------------------------------------------------
 
 #include "Dict.h"
 
-inline int Object::dictGetLength() const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->getLength();
-}
-
-inline void Object::dictAdd(const char *key, Object &&val)
-{
-    OBJECT_TYPE_CHECK(objDict);
-    dict->add(key, std::move(val));
-}
-
-inline void Object::dictSet(const char *key, Object &&val)
-{
-    OBJECT_TYPE_CHECK(objDict);
-    dict->set(key, std::move(val));
-}
-
-inline void Object::dictRemove(const char *key)
-{
-    OBJECT_TYPE_CHECK(objDict);
-    dict->remove(key);
-}
-
-inline bool Object::dictIs(const char *dictType) const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->is(dictType);
-}
-
-inline bool Object::isDict(const char *dictType) const
-{
-    return type == objDict && dictIs(dictType);
-}
-
-inline Object Object::dictLookup(const char *key, int recursion) const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->lookup(key, recursion);
-}
-
-inline const Object &Object::dictLookupNF(const char *key) const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->lookupNF(key);
-}
-
-inline const char *Object::dictGetKey(int i) const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->getKey(i);
-}
-
-inline Object Object::dictGetVal(int i) const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->getVal(i);
-}
-
-inline const Object &Object::dictGetValNF(int i) const
-{
-    OBJECT_TYPE_CHECK(objDict);
-    return dict->getValNF(i);
-}
-
 //------------------------------------------------------------------------
 // Stream accessors.
 //------------------------------------------------------------------------
 
 #include "Stream.h"
-
-inline void Object::streamReset()
-{
-    OBJECT_TYPE_CHECK(objStream);
-    stream->reset();
-}
-
-inline void Object::streamClose()
-{
-    OBJECT_TYPE_CHECK(objStream);
-    stream->close();
-}
-
-inline int Object::streamGetChar()
-{
-    OBJECT_TYPE_CHECK(objStream);
-    return stream->getChar();
-}
-
-inline int Object::streamGetChars(int nChars, unsigned char *buffer)
-{
-    OBJECT_TYPE_CHECK(objStream);
-    return stream->doGetChars(nChars, buffer);
-}
-
-inline Dict *Object::streamGetDict() const
-{
-    OBJECT_TYPE_CHECK(objStream);
-    return stream->getDict();
-}
 
 #endif

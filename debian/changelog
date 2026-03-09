@@ -1,22 +1,253 @@
-poppler (22.12.0-2+deb12u1deepin1) unstable; urgency=medium
+poppler (25.03.0-5+deb13u2) trixie; urgency=high
 
-  * fix CVE-2024-6239 
+  [ Leonidas Da Silva Barbosa ]
+  * SECURITY UPDATE: Denial of service
+    - debian/patches/CVE-2025-50420.patch: don't continue
+      recursing in PDFDoc in poppler/PDFDoc.cc.
+    - CVE-2025-50420 (Closes: #1110463)
 
- -- zengwei <zengwei1@uniontech.com>  Thu, 29 Jan 2026 13:43:35 +0800
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Sun, 31 Aug 2025 14:01:36 -0400
 
-poppler (22.12.0-2+deb12u1) bookworm; urgency=medium
+poppler (25.03.0-5) unstable; urgency=high
+
+  [ Marc Deslauriers ]
+  * SECURITY UPDATE: DoS via reference count overflow
+    - debian/patches/CVE-2025-52886.patch: limit amount of annots per
+      document/page in poppler/Annot.cc, poppler/Page.cc.
+    - CVE-2025-52886 (Closes: #1108784)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 28 Jul 2025 10:55:12 +0200
+
+poppler (25.03.0-4) unstable; urgency=high
+
+  * Team upload
+  * SECURITY UPDATE: Properly verify abde.pkcs7.sha1 signatures
+    - Cherry-pick upstream fix for the
+      NSSSignatureVerification::validateSignature function
+      in NSSCryptoSignBackend.cc
+    - CVE-2025-43903 (Closes: #1103545)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 18 Apr 2025 18:16:32 -0400
+
+poppler (25.03.0-3) unstable; urgency=high
+
+  * Team upload
+  * SECURITY UPDATE: floating-point exception vulnerability (Closes: #1102190)
+     - Cherry-pick upstream fix for the PSStack::roll function
+       in Function.cc
+     - CVE-2025-32364
+  * SECURITY UPDATE: out-of-bounds read vulnerability (Closes: #1102191)
+     - Cherry-pick upstream fix for the JBIG2Bitmap::combine function
+       in JBIG2Stream.cc (LP: #2106404)
+     - CVE-2025-32365
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 07 Apr 2025 11:11:10 -0400
+
+poppler (25.03.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Release to Unstable (LP: #2100905)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 06 Mar 2025 07:13:50 -0500
+
+poppler (25.03.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Rename libpoppler145 to libpoppler147 to match soname bump
+  * Update symbols files
+  * Remove all patches: applied in new release
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Tue, 04 Mar 2025 16:22:49 -0500
+
+poppler (25.01.0-5) unstable; urgency=medium
+
+  * Team upload
+  * Cherry-pick default signature colors fix for Papers (Closes: #1098406)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 27 Feb 2025 15:01:21 -0500
+
+poppler (25.01.0-4) unstable; urgency=medium
+
+  * Add patch to fix glib crash, needed by papers 48
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 06 Feb 2025 22:31:49 -0500
+
+poppler (25.01.0-3) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS: Disable gtkdoc in arch-only build (Closes: #1060865)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 03 Feb 2025 09:19:28 -0500
+
+poppler (25.01.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Run wrap-and-sort
+  * Update gir Depends
+  * Remove obsolete Lintian overrides
+  * Release to unstable
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Sun, 26 Jan 2025 13:53:06 -0500
+
+poppler (25.01.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Rename libpoppler and libpoppler-cpp packages for soname bump
+  * Update symbol files with new symbols
+  * Remove remaining patch: applied upstream
+
+ -- Alessandro Astone <alessandro.astone@canonical.com>  Wed, 15 Jan 2025 12:29:05 +0100
+
+poppler (24.08.0-4) unstable; urgency=high
+
+  * Team upload
+  * SECURITY UPDATE: out-of-bounds read vulnerability (Closes: #1091322)
+     - Cherry-pick upstream fix for the JBIG2Bitmap::combine function
+       in JBIG2Stream.cc
+     - CVE-2024-56378
+  * libpoppler-glib-dev: Add Provides: ${gir:Provides}
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Sat, 04 Jan 2025 17:16:42 -0900
+
+poppler (24.08.0-3) unstable; urgency=medium
+
+  [ John Scott ]
+  * Enable the GnuPG/gpgsm PDF signature backend.
+
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Wed, 23 Oct 2024 09:35:17 +0200
+
+poppler (24.08.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Release to unstable
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Sun, 18 Aug 2024 10:46:36 -0400
+
+poppler (24.08.0-1) experimental; urgency=medium
+
+  * Team upload
+
+  [ Jeremy Bícha ]
+  * New upstream release
+  * Update library name to libpoppler140 to match soname bump
+  * debian/libpoppler-qt*.symbols.in: Add new symbols
+
+  [ Dandan Zhang ]
+  * Build qt6 library for loong64 (Closes: #1074410)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 01 Aug 2024 19:46:39 -0400
+
+poppler (24.06.0-2) experimental; urgency=medium
+
+  * Update symbols files
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 20 Jun 2024 09:03:23 -0400
+
+poppler (24.06.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library names to libpoppler134 & libpoppler-cpp1 for soname bumps
+  * debian/poppler-utils.install: Install pdfsig translation
+  * Bump Standards Version to 4.7.0
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Tue, 04 Jun 2024 11:17:27 -0400
+
+poppler (24.02.0-5) unstable; urgency=medium
+
+  * Team upload
+  * Stop building Qt6 library on i386
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 16 May 2024 10:25:19 +0200
+
+poppler (24.02.0-4) unstable; urgency=medium
+
+  * Team upload
+  * Fix error in declaring Replaces: libpoppler-cpp0v5 (Closes: #1071009)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Mon, 13 May 2024 13:32:22 +0200
+
+poppler (24.02.0-3) unstable; urgency=medium
+
+  * Team upload
+  * Restore t64 changes from 22.12.0-2.2 and bump Breaks/Replaces.
+    Use standard versioned Replaces instead of unversioned. (Closes: #1070862)
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 10 May 2024 14:18:27 -0400
+
+poppler (24.02.0-2) unstable; urgency=medium
+
+  * Team upload
+  * Release to unstable
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 10 May 2024 05:43:01 -0400
+
+poppler (24.02.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library name to libpoppler134 to match soname
+  * debian/copyright: Update path of a moved file
+
+ -- Amin Bandali <bandali@ubuntu.com>  Tue, 13 Feb 2024 11:59:19 -0500
+
+poppler (23.12.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Update library name to libpoppler133 to match soname
+  * Add new symbols to symbols files
+  * Build-Depend on libcurl4-gnutls-dev
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 01 Dec 2023 10:08:39 -0500
+
+poppler (23.08.0-2) experimental; urgency=medium
+
+  * Team upload
+
+  [ Jeremy Bicha ]
+  * Explicitly disable gpg support for now
+
+  [ Amin Bandali ]
+  * 23.08.0 upstream release addresses CVE-2023-34872 (Closes: #1042811)
+  * debian/rules: Opt into LTO (to minimize symbols diff with Ubuntu)
+  * Drop most optional symbols from libpoppler-qt5-1 and libpoppler-qt6-3
+
+ -- Amin Bandali <bandali@ubuntu.com>  Wed, 16 Aug 2023 10:20:27 -0400
+
+poppler (23.08.0-1) experimental; urgency=medium
+
+  * Team upload
+  * New upstream release (Closes: #969907)
+  * Update library name to libpoppler130 to match soname
+  * Address some lintian error and warnings:
+    - E: libpoppler-private-dev: depends-on-obsolete-package
+      Suggests: libfreetype6-dev => libfreetype-dev
+    - W: poppler source: build-depends-on-obsolete-package
+      Build-Depends: libfontconfig1-dev => libfontconfig-dev
+    - W: poppler source: build-depends-on-obsolete-package
+      Build-Depends: libfreetype6-dev => libfreetype-dev
+  * Update standards version to 4.6.2, no changes needed
+  * Update minimum version of several Build-Depends and Depends
+    per upstream
+
+ -- Amin Bandali <bandali@ubuntu.com>  Thu, 10 Aug 2023 17:27:57 -0400
+
+poppler (22.12.0-2.2) unstable; urgency=medium
 
   * Non-maintainer upload.
-  * CVE-2023-34872: OutlineItem::open crash on malformed files
-    (Closes: #1042811)
-  * CVE-2024-56378: Out-of-bounds read in JBIG2Bitmap::combine
-    (Closes: #1091322)
-  * CVE-2025-32364: Floating point exception in PSStack::roll
-    (Closes: #1102190)
-  * CVE-2025-32365: Out-of-bounds read in JBIG2:Bitmap::combine
-    (Closes: #1102191)
+  * Fix wrong extraneous X-Time64-Compat declarations.  Closes: #1065155.
 
- -- Adrian Bunk <bunk@debian.org>  Sat, 12 Apr 2025 21:26:36 +0300
+ -- Steve Langasek <vorlon@debian.org>  Sun, 03 Mar 2024 08:43:35 +0000
+
+poppler (22.12.0-2.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Rename libraries for 64-bit time_t transition.  Closes: #1064282
+
+ -- Benjamin Drung <bdrung@debian.org>  Thu, 29 Feb 2024 21:10:54 +0000
 
 poppler (22.12.0-2) unstable; urgency=medium
 

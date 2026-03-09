@@ -5,7 +5,7 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2005 Jeff Muizelaar <jeff@infidigm.net>
-// Copyright 2005-2010, 2012, 2017, 2020-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2005-2010, 2012, 2017, 2020-2023 Albert Astals Cid <aacid@kde.org>
 // Copyright 2009 Ryszard Trojnacki <rysiek@menel.com>
 // Copyright 2010 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright 2011 Daiki Ueno <ueno@unixuser.org>
@@ -13,6 +13,8 @@
 // Copyright 2012, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2020 Lluís Batlle i Rossell <viric@viric.name>
+// Copyright 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -33,10 +35,10 @@ static boolean str_fill_input_buffer(j_decompress_ptr cinfo)
     } else {
         c = src->str->getChar();
     }
+    src->buffer = c;
+    src->pub.next_input_byte = &src->buffer;
+    src->pub.bytes_in_buffer = 1;
     if (c != EOF) {
-        src->buffer = c;
-        src->pub.next_input_byte = &src->buffer;
-        src->pub.bytes_in_buffer = 1;
         return TRUE;
     } else {
         return FALSE;
@@ -114,11 +116,11 @@ void DCTStream::init()
     row_buffer = nullptr;
 }
 
-void DCTStream::reset()
+bool DCTStream::reset()
 {
     int row_stride;
 
-    str->reset();
+    bool success = str->reset();
 
     if (row_buffer) {
         jpeg_destroy_decompress(&cinfo);
@@ -137,7 +139,7 @@ void DCTStream::reset()
             c = str->getChar();
             if (c == -1) {
                 error(errSyntaxError, -1, "Could not find start of jpeg data");
-                return;
+                return false;
             }
             if (c != 0xFF) {
                 c = 0;
@@ -187,6 +189,8 @@ void DCTStream::reset()
             row_buffer = cinfo.mem->alloc_sarray((j_common_ptr)&cinfo, JPOOL_IMAGE, row_stride, 1);
         }
     }
+
+    return success;
 }
 
 bool DCTStream::readLine()
@@ -246,17 +250,17 @@ int DCTStream::lookChar()
     return *current;
 }
 
-GooString *DCTStream::getPSFilter(int psLevel, const char *indent)
+std::optional<std::string> DCTStream::getPSFilter(int psLevel, const char *indent)
 {
-    GooString *s;
+    std::optional<std::string> s;
 
     if (psLevel < 2) {
-        return nullptr;
+        return {};
     }
     if (!(s = str->getPSFilter(psLevel, indent))) {
-        return nullptr;
+        return {};
     }
-    s->append(indent)->append("<< >> /DCTDecode filter\n");
+    s->append(indent).append("<< >> /DCTDecode filter\n");
     return s;
 }
 
