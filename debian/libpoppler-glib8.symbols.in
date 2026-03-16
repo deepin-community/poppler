@@ -1,4 +1,4 @@
-libpoppler-glib.so.8 libpoppler-glib8t64 #MINVER#
+libpoppler-glib.so.8 libpoppler-glib8 #MINVER#
 * Build-Depends-Package: libpoppler-glib-dev
  (optional|regex)"^_Z.*@Base$" #CURVER#
  poppler_action_copy@Base 0.18.0
