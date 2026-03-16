@@ -1,3 +1,9 @@
+poppler (25.03.0-5+deb13u2deepin1) unstable; urgency=medium
+
+  * Revert 64-bit time_t changes.
+
+ -- tunaichao <tunaichao@uniontech.com>  Mon, 16 Mar 2026 11:19:15 +0800
+
 poppler (25.03.0-5+deb13u2) trixie; urgency=high
 
   [ Leonidas Da Silva Barbosa ]

@@ -78,10 +78,7 @@ Description: PDF rendering library -- private development files
  This package contains the private and unstable headers needed to build
  applications using the private Poppler core library.
 
-Package: libpoppler-glib8t64
-Provides: ${t64:Provides}
-Breaks: libpoppler-glib8 (<< 24.02.0-3~)
-Replaces: libpoppler-glib8 (<< 24.02.0-3~)
+Package: libpoppler-glib8
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -100,7 +97,7 @@ Section: libdevel
 Depends: libcairo2-dev (>= 1.16.0),
          libglib2.0-dev (>= 2.64),
          libpoppler-dev (= ${binary:Version}),
-         libpoppler-glib8t64 (= ${binary:Version}),
+         libpoppler-glib8 (= ${binary:Version}),
          ${gir:Depends},
          ${misc:Depends}
 Provides: ${gir:Provides}
@@ -136,10 +133,7 @@ Description: GObject introspection data for poppler-glib
  It can be used by packages using the GIRepository format to generate
  dynamic bindings.
 
-Package: libpoppler-qt5-1t64
-Provides: ${t64:Provides}
-Breaks: libpoppler-qt5-1 (<< 24.02.0-3~)
-Replaces: libpoppler-qt5-1 (<< 24.02.0-3~)
+Package: libpoppler-qt5-1
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -157,7 +151,7 @@ Architecture: any
 Section: libdevel
 Multi-Arch: same
 Depends: libpoppler-dev (= ${binary:Version}),
-         libpoppler-qt5-1t64 (= ${binary:Version}),
+         libpoppler-qt5-1 (= ${binary:Version}),
          qtbase5-dev,
          ${misc:Depends}
 Description: PDF rendering library -- development files (Qt 5 interface)
@@ -166,10 +160,7 @@ Description: PDF rendering library -- development files (Qt 5 interface)
  This package contains the headers and development libraries needed to
  build applications using the Qt 5-based Poppler interface.
 
-Package: libpoppler-qt6-3t64
-Provides: ${t64:Provides}
-Breaks: libpoppler-qt6-3 (<< 24.02.0-3~)
-Replaces: libpoppler-qt6-3 (<< 24.02.0-3~)
+Package: libpoppler-qt6-3
 Architecture: hurd-any alpha amd64 arm64 armel armhf hppa loong64 m68k mips64el powerpc ppc64 ppc64el riscv64 s390x sh4 sparc64
 Section: libs
 Multi-Arch: same
@@ -187,7 +178,7 @@ Architecture: hurd-any alpha amd64 arm64 armel armhf hppa loong64 m68k mips64el 
 Section: libdevel
 Multi-Arch: same
 Depends: libpoppler-dev (= ${binary:Version}),
-         libpoppler-qt6-3t64 (= ${binary:Version}),
+         libpoppler-qt6-3 (= ${binary:Version}),
          qt6-base-dev,
          ${misc:Depends}
 Description: PDF rendering library -- development files (Qt 6 interface)
