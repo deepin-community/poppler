@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2018 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2018, 2022, 2023 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
@@ -26,6 +26,8 @@
 
 #include "FoFiBase.h"
 
+#include <string>
+
 //------------------------------------------------------------------------
 // FoFiType1
 //------------------------------------------------------------------------
@@ -36,20 +38,14 @@ public:
     // Create a FoFiType1 object from a memory buffer.
     static FoFiType1 *make(const unsigned char *fileA, int lenA);
 
-    // Create a FoFiType1 object from a file on disk.
-    static FoFiType1 *load(const char *fileName);
-
     ~FoFiType1() override;
 
     // Return the font name.
-    const char *getName();
+    std::string getName();
 
     // Return the encoding, as an array of 256 names (any of which may
     // be NULL).
     char **getEncoding();
-
-    // Return the font matrix as an array of six numbers.
-    void getFontMatrix(double *mat);
 
     // Write a version of the Type 1 font file with a new encoding.
     void writeEncoded(const char **newEncoding, FoFiOutputFunc outputFunc, void *outputStream) const;
@@ -61,9 +57,8 @@ private:
     void parse();
     void undoPFB();
 
-    char *name;
+    std::string name;
     char **encoding;
-    double fontMatrix[6];
     bool parsed;
 };
 

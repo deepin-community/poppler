@@ -32,6 +32,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Eddie Kohler <ekohler@gmail.com>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -66,7 +67,7 @@ void removeStyleSuffix(std::string &familyName)
 
 }
 
-#define xoutRound(x) ((int)(x + 0.5))
+#define xoutRound(x) ((int)((x) + 0.5))
 extern bool xml;
 extern bool fontFullName;
 
@@ -156,7 +157,7 @@ HtmlFont::HtmlFont(const GfxFont &font, int _size, GfxRGB rgb, double opacity)
             italic = true;
         }
 
-        familyName = fontname->c_str();
+        familyName = *fontname;
         removeStyleSuffix(familyName);
     } else {
         FontName = new GooString(defaultFamilyName);
@@ -230,9 +231,9 @@ GooString *HtmlFont::getFullName()
 }
 
 // this method if plain wrong todo
-GooString *HtmlFont::HtmlFilter(const Unicode *u, int uLen)
+std::unique_ptr<GooString> HtmlFont::HtmlFilter(const Unicode *u, int uLen)
 {
-    GooString *tmp = new GooString();
+    auto tmp = std::make_unique<GooString>();
     const UnicodeMap *uMap;
     char buf[8];
     int n;
@@ -278,9 +279,9 @@ GooString *HtmlFont::HtmlFilter(const Unicode *u, int uLen)
     return tmp;
 }
 
-HtmlFontAccu::HtmlFontAccu() { }
+HtmlFontAccu::HtmlFontAccu() = default;
 
-HtmlFontAccu::~HtmlFontAccu() { }
+HtmlFontAccu::~HtmlFontAccu() = default;
 
 int HtmlFontAccu::AddFont(const HtmlFont &font)
 {

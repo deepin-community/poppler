@@ -25,6 +25,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Eddie Kohler <ekohler@gmail.com>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -51,25 +52,9 @@ private:
 public:
     HtmlFontColor() : r(0), g(0), b(0), opacity(255) { }
     HtmlFontColor(GfxRGB rgb, double opacity);
-    HtmlFontColor(const HtmlFontColor &x)
-    {
-        r = x.r;
-        g = x.g;
-        b = x.b;
-        opacity = x.opacity;
-    }
-    HtmlFontColor &operator=(const HtmlFontColor &x)
-    {
-        r = x.r;
-        g = x.g;
-        b = x.b;
-        opacity = x.opacity;
-        return *this;
-    }
-    ~HtmlFontColor() {};
     GooString *toString() const;
     double getOpacity() const { return opacity / 255.0; }
-    bool isEqual(const HtmlFontColor &col) const { return ((r == col.r) && (g == col.g) && (b == col.b) && (opacity == col.opacity)); }
+    bool isEqual(HtmlFontColor col) const { return ((r == col.r) && (g == col.g) && (b == col.b) && (opacity == col.opacity)); }
 };
 
 class HtmlFont
@@ -104,7 +89,7 @@ public:
     }
     const double *getRotMat() const { return rotSkewMat; }
     GooString *getFontName();
-    static GooString *HtmlFilter(const Unicode *u, int uLen); // char* s);
+    static std::unique_ptr<GooString> HtmlFilter(const Unicode *u, int uLen); // char* s);
     bool isEqual(const HtmlFont &x) const;
     bool isEqualIgnoreBold(const HtmlFont &x) const;
     void print() const { printf("font: %s (%s) %d %s%s\n", FontName->c_str(), familyName.c_str(), size, bold ? "bold " : "", italic ? "italic " : ""); };

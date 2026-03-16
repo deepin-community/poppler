@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Dan Sheridan <dan.sheridan@postman.org.uk>
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
-// Copyright (C) 2006, 2008, 2010, 2012-2014, 2016-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008, 2010, 2012-2014, 2016-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007-2008 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2007 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009, 2010 Ilya Gorenbein <igorenbein@finjan.com>
@@ -32,6 +32,11 @@
 // Copyright (C) 2010 William Bader <william@newspapersystems.com>
 // Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
 // Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
+// Copyright (C) 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023 Ilaï Deutel <idtl@google.com>
+// Copyright (C) 2023 Even Rouault <even.rouault@spatialys.com>
+// Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2024 Vincent Lefevre <vincent@vinc17.net>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -157,12 +162,14 @@ ObjectStream::ObjectStream(XRef *xref, int objStrNumA, int recursion)
         error(errSyntaxError, -1, "Too many objects in an object stream");
         return;
     }
+    if (!objStr.streamReset()) {
+        return;
+    }
     objs = new Object[nObjects];
     objNums = (int *)gmallocn(nObjects, sizeof(int));
     offsets = (Goffset *)gmallocn(nObjects, sizeof(Goffset));
 
     // parse the header: object numbers and offsets
-    objStr.streamReset();
     str = new EmbedStream(objStr.getStream(), Object(objNull), true, first);
     parser = new Parser(xref, str, false);
     for (i = 0; i < nObjects; ++i) {
@@ -253,9 +260,11 @@ XRef::XRef() : objStrs { 5 }
     permFlags = defPermFlags;
     ownerPasswordOk = false;
     rootNum = -1;
+    rootGen = -1;
     strOwner = false;
     xrefReconstructed = false;
     encAlgorithm = cryptNone;
+    keyLength = 0;
 }
 
 XRef::XRef(const Object *trailerDictA) : XRef {}
@@ -415,22 +424,34 @@ XRef *XRef::copy() const
 int XRef::reserve(int newSize)
 {
     if (newSize > capacity) {
-
-        int realNewSize;
-        for (realNewSize = capacity ? 2 * capacity : 1024; newSize > realNewSize && realNewSize > 0; realNewSize <<= 1) {
-            ;
+        int newCapacity = 1024;
+        if (capacity) {
+            if (capacity <= INT_MAX / 2) {
+                newCapacity = capacity * 2;
+            } else {
+                newCapacity = newSize;
+            }
         }
-        if ((realNewSize < 0) || (realNewSize >= INT_MAX / (int)sizeof(XRefEntry))) {
+        while (newSize > newCapacity) {
+            if (newCapacity > INT_MAX / 2) {
+                std::fputs("Too large XRef size\n", stderr);
+                return 0;
+            }
+            newCapacity *= 2;
+        }
+        if (newCapacity >= INT_MAX / (int)sizeof(XRefEntry)) {
+            std::fputs("Too large XRef size\n", stderr);
             return 0;
         }
 
-        void *p = greallocn_checkoverflow(entries, realNewSize, sizeof(XRefEntry));
+        void *p = grealloc(entries, newCapacity * sizeof(XRefEntry),
+                           /* checkoverflow=*/true);
         if (p == nullptr) {
             return 0;
         }
 
         entries = (XRefEntry *)p;
-        capacity = realNewSize;
+        capacity = newCapacity;
     }
 
     return capacity;
@@ -729,7 +750,10 @@ bool XRef::readXRefStream(Stream *xrefStr, Goffset *pos)
         return false;
     }
 
-    xrefStr->reset();
+    if (!xrefStr->reset()) {
+        return false;
+    }
+
     const Object &idx = dict->lookupNF("Index");
     if (idx.isArray()) {
         for (int i = 0; i + 1 < idx.arrayGetLength(); i += 2) {
@@ -888,7 +912,9 @@ bool XRef::constructXRef(bool *wasReconstructed, bool needCatalogDict)
         xrefReconstructedCb();
     }
 
-    str->reset();
+    if (!str->reset()) {
+        return false;
+    }
     while (true) {
         pos = str->getPos();
         if (!str->getLine(buf, 256)) {
@@ -919,7 +945,7 @@ bool XRef::constructXRef(bool *wasReconstructed, bool needCatalogDict)
                 Object newTrailerDict = parser->getObj();
                 if (newTrailerDict.isDict()) {
                     const Object &obj = newTrailerDict.dictLookupNF("Root");
-                    if (obj.isRef() && (!gotRoot || !needCatalogDict) && rootNum != obj.getRefNum()) {
+                    if (obj.isRef() && (!gotRoot || !needCatalogDict)) {
                         rootNum = obj.getRefNum();
                         rootGen = obj.getRefGen();
                         trailerDict = newTrailerDict.copy();
@@ -1170,6 +1196,16 @@ Object XRef::fetch(int num, int gen, int recursion, Goffset *endPos)
     Object obj1, obj2, obj3;
 
     xrefLocker();
+
+    const Ref ref = { num, gen };
+
+    if (!refsBeingFetched.insert(ref)) {
+        return Object(objNull);
+    }
+
+    // Will remove ref from refsBeingFetched once it's destroyed, i.e. the function returns
+    RefRecursionCheckerRemover remover(refsBeingFetched, ref);
+
     // check for bogus ref - this can happen in corrupted PDF files
     if (num < 0 || num >= size) {
         goto err;
@@ -1262,13 +1298,13 @@ err:
             }
         }
         if (xrefHasChanges) {
-            error(errInternal, -1, "xref num {0:d} not found but needed, document has changes, reconstruct aborted\n", num);
+            error(errInternal, -1, "xref num {0:d} not found but needed, document has changes, reconstruct aborted", num);
             // pretend we constructed the xref, otherwise we will do this check again and again
             xrefReconstructed = true;
             return Object(objNull);
         }
 
-        error(errInternal, -1, "xref num {0:d} not found but needed, try to reconstruct\n", num);
+        error(errInternal, -1, "xref num {0:d} not found but needed, try to reconstruct", num);
         rootNum = -1;
         constructXRef(&xrefReconstructed);
         return fetch(num, gen, ++recursion, endPos);
@@ -1421,10 +1457,13 @@ void XRef::setModifiedObject(const Object *o, Ref r)
 {
     xrefLocker();
     if (r.num < 0 || r.num >= size) {
-        error(errInternal, -1, "XRef::setModifiedObject on unknown ref: {0:d}, {1:d}\n", r.num, r.gen);
+        error(errInternal, -1, "XRef::setModifiedObject on unknown ref: {0:d}, {1:d}", r.num, r.gen);
         return;
     }
     XRefEntry *e = getEntry(r.num);
+    if (unlikely(e->type == xrefEntryFree)) {
+        error(errInternal, -1, "XRef::setModifiedObject on ref: {0:d}, {1:d} that is marked as free. This will cause a memory leak", r.num, r.gen);
+    }
     e->obj = o->copy();
     e->setFlag(XRefEntry::Updated, true);
     setModified();
@@ -1466,7 +1505,7 @@ void XRef::removeIndirectObject(Ref r)
 {
     xrefLocker();
     if (r.num < 0 || r.num >= size) {
-        error(errInternal, -1, "XRef::removeIndirectObject on unknown ref: {0:d}, {1:d}\n", r.num, r.gen);
+        error(errInternal, -1, "XRef::removeIndirectObject on unknown ref: {0:d}, {1:d}", r.num, r.gen);
         return;
     }
     XRefEntry *e = getEntry(r.num);
@@ -1482,24 +1521,31 @@ void XRef::removeIndirectObject(Ref r)
     setModified();
 }
 
-Ref XRef::addStreamObject(Dict *dict, char *buffer, const Goffset bufferSize)
+Ref XRef::addStreamObject(Dict *dict, char *buffer, const Goffset bufferSize, StreamCompression compression)
 {
     dict->add("Length", Object((int)bufferSize));
     AutoFreeMemStream *stream = new AutoFreeMemStream(buffer, 0, bufferSize, Object(dict));
     stream->setFilterRemovalForbidden(true);
+    switch (compression) {
+    case StreamCompression::None:;
+        break;
+    case StreamCompression::Compress:
+        stream->getDict()->add("Filter", Object(objName, "FlateDecode"));
+        break;
+    }
     return addIndirectObject(Object((Stream *)stream));
 }
 
-Ref XRef::addStreamObject(Dict *dict, uint8_t *buffer, const Goffset bufferSize)
+Ref XRef::addStreamObject(Dict *dict, uint8_t *buffer, const Goffset bufferSize, StreamCompression compression)
 {
-    return addStreamObject(dict, (char *)buffer, bufferSize);
+    return addStreamObject(dict, (char *)buffer, bufferSize, compression);
 }
 
 void XRef::writeXRef(XRef::XRefWriter *writer, bool writeAllEntries)
 {
     // create free entries linked-list
     if (getEntry(0)->gen != 65535) {
-        error(errInternal, -1, "XRef::writeXRef, entry 0 of the XRef is invalid (gen != 65535)\n");
+        error(errInternal, -1, "XRef::writeXRef, entry 0 of the XRef is invalid (gen != 65535)");
     }
     int lastFreeEntry = 0;
     for (int i = 0; i < size; i++) {

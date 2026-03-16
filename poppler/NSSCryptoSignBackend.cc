@@ -6,7 +6,7 @@
 //
 // Copyright 2015, 2016 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2015 André Esser <bepandre@hotmail.com>
-// Copyright 2015, 2016, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2015, 2016, 2018, 2019, 2021-2023, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright 2015 Markus Kilås <digital@markuspage.com>
 // Copyright 2017 Sebastian Rasmussen <sebras@gmail.com>
 // Copyright 2017 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
@@ -17,16 +17,23 @@
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2021 Marek Kasik <mkasik@redhat.com>
 // Copyright 2022 Erich E. Hoover <erich.e.hoover@gmail.com>
+// Copyright 2023 Tobias Deiminger <tobias.deiminger@posteo.de>
+// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023 Ingo Klöcker <kloecker@kde.org>
+// Copyright 2025 Juraj Šarinay <juraj@sarinay.com>
 //
 //========================================================================
 
 #include <config.h>
 
-#include "SignatureHandler.h"
-#include "goo/gdir.h"
+#include "CryptoSignBackend.h"
+#include "NSSCryptoSignBackend.h"
 #include "goo/gmem.h"
 
+#include <array>
 #include <optional>
+#include <vector>
+#include <filesystem>
 
 #include <Error.h>
 
@@ -44,70 +51,6 @@
 #include <sechash.h>
 #include <cms.h>
 #include <cmst.h>
-
-// ASN.1 used in the (much simpler) time stamp request. From RFC3161
-// and other sources.
-
-/*
-AlgorithmIdentifier  ::=  SEQUENCE  {
-     algorithm  OBJECT IDENTIFIER,
-     parameters ANY DEFINED BY algorithm OPTIONAL  }
-                   -- contains a value of the type
-                   -- registered for use with the
-                   -- algorithm object identifier value
-
-MessageImprint ::= SEQUENCE  {
-    hashAlgorithm AlgorithmIdentifier,
-    hashedMessage OCTET STRING  }
-*/
-
-struct MessageImprint
-{
-    SECAlgorithmID hashAlgorithm;
-    SECItem hashedMessage;
-};
-
-/*
-Extension  ::=  SEQUENCE  {
-    extnID    OBJECT IDENTIFIER,
-    critical  BOOLEAN DEFAULT FALSE,
-    extnValue OCTET STRING  }
-*/
-
-struct Extension
-{
-    SECItem const extnID;
-    SECItem const critical;
-    SECItem const extnValue;
-};
-
-/*
-Extensions ::= SEQUENCE SIZE (1..MAX) OF Extension
-*/
-
-/*
-TSAPolicyId ::= OBJECT IDENTIFIER
-
-TimeStampReq ::= SEQUENCE  {
-    version            INTEGER  { v1(1) },
-    messageImprint     MessageImprint,
-    --a hash algorithm OID and the hash value of the data to be
-    --time-stamped
-    reqPolicy          TSAPolicyId         OPTIONAL,
-    nonce              INTEGER             OPTIONAL,
-    certReq            BOOLEAN             DEFAULT FALSE,
-    extensions     [0] IMPLICIT Extensions OPTIONAL  }
-*/
-
-struct TimeStampReq
-{
-    SECItem version;
-    MessageImprint messageImprint;
-    SECItem reqPolicy;
-    SECItem nonce;
-    SECItem certReq;
-    Extension *extensions;
-};
 
 /**
  * General name, defined by RFC 3280.
@@ -257,6 +200,10 @@ const SEC_ASN1Template TimeStampReq_Template[] = { { SEC_ASN1_SEQUENCE, 0, nullp
                                                    { 0, 0, nullptr, 0 } };
 */
 
+static NSSCMSMessage *CMS_MessageCreate(SECItem *cms_item);
+static NSSCMSSignedData *CMS_SignedDataCreate(NSSCMSMessage *cms_msg);
+static NSSCMSSignerInfo *CMS_SignerInfoCreate(NSSCMSSignedData *cms_sig_data);
+
 // a dummy, actually
 static char *passwordCallback(PK11SlotInfo * /*slot*/, PRBool /*retry*/, void *arg)
 {
@@ -270,106 +217,29 @@ static void shutdownNss()
     }
 }
 
-// SEC_StringToOID() and NSS_CMSSignerInfo_AddUnauthAttr() are
-// not exported from libsmime, so copy them here. Sigh.
-
-static SECStatus my_SEC_StringToOID(SECItem *to, const char *from, PRUint32 len)
-{
-    PRUint32 decimal_numbers = 0;
-    PRUint32 result_bytes = 0;
-    SECStatus rv;
-    PRUint8 result[1024];
-
-    static const PRUint32 max_decimal = 0xffffffff / 10;
-    static const char OIDstring[] = { "OID." };
-
-    if (!from || !to) {
-        PORT_SetError(SEC_ERROR_INVALID_ARGS);
-        return SECFailure;
-    }
-    if (!len) {
-        len = PL_strlen(from);
-    }
-    if (len >= 4 && !PL_strncasecmp(from, OIDstring, 4)) {
-        from += 4; /* skip leading "OID." if present */
-        len -= 4;
-    }
-    if (!len) {
-    bad_data:
-        PORT_SetError(SEC_ERROR_BAD_DATA);
-        return SECFailure;
-    }
-    do {
-        PRUint32 decimal = 0;
-        while (len > 0 && (*from >= '0' && *from <= '9')) {
-            PRUint32 addend = *from++ - '0';
-            --len;
-            if (decimal > max_decimal) { /* overflow */
-                goto bad_data;
-            }
-            decimal = (decimal * 10) + addend;
-            if (decimal < addend) { /* overflow */
-                goto bad_data;
-            }
-        }
-        if (len != 0 && *from != '.') {
-            goto bad_data;
-        }
-        if (decimal_numbers == 0) {
-            if (decimal > 2) {
-                goto bad_data;
-            }
-            result[0] = decimal * 40;
-            result_bytes = 1;
-        } else if (decimal_numbers == 1) {
-            if (decimal > 40) {
-                goto bad_data;
-            }
-            result[0] += decimal;
-        } else {
-            /* encode the decimal number,  */
-            PRUint8 *rp;
-            PRUint32 num_bytes = 0;
-            PRUint32 tmp = decimal;
-            while (tmp) {
-                num_bytes++;
-                tmp >>= 7;
-            }
-            if (!num_bytes) {
-                ++num_bytes; /* use one byte for a zero value */
-            }
-            if (num_bytes + result_bytes > sizeof result) {
-                goto bad_data;
-            }
-            tmp = num_bytes;
-            rp = result + result_bytes - 1;
-            rp[tmp] = static_cast<PRUint8>(decimal & 0x7f);
-            decimal >>= 7;
-            while (--tmp > 0) {
-                rp[tmp] = static_cast<PRUint8>(decimal | 0x80);
-                decimal >>= 7;
-            }
-            result_bytes += num_bytes;
-        }
-        ++decimal_numbers;
-        if (len > 0) { /* skip trailing '.' */
-            ++from;
-            --len;
-        }
-    } while (len > 0);
-    /* now result contains result_bytes of data */
-    if (to->data && to->len >= result_bytes) {
-        to->len = result_bytes;
-        PORT_Memcpy(to->data, result, to->len);
-        rv = SECSuccess;
-    } else {
-        SECItem result_item = { siBuffer, nullptr, 0 };
-        result_item.data = result;
-        result_item.len = result_bytes;
-        rv = SECITEM_CopyItem(nullptr, to, &result_item);
-    }
-    return rv;
-}
+// An ASN.1 object identifier (OID) is typically written as a dot-separated sequence of integers
+// and encoded as a sequence of bytes. Because we only ever need to handle BER encoded OIDs, keep
+// them encoded from the beginning to avoid conversions at run time.
+//
+// The mapping from the sequence of integers to an array of bytes follows ITU-T X.690 clause 8.19.
+// The first two components are encoded in a single output byte: out[0] = 40 * in[0] + in[1]
+//
+// EXAMPLE: 1.2 -> 40 * 1 + 2 = 0x2a
+//
+// From the third component onwards:
+//     1. interpret the integer in base 128
+//     2. map the 7-bit digits to bytes
+//     3. set the most significant bit in all but the least signigicant byte to 1
+//     4. output the bytes from left to right
+//
+// EXAMPLE: 840 = 110 1001000 -> 10000110 01001000 = 0x86 0x48
+//          113549 = 110 1110111 0001101 -> 10000110 11110111 00001101 = 0x86 0xf7 0x0d
+//
+// As a consequence, a component that fits within 7 bits can be output unchanged as a single byte.
+// EXAMPLE: .1.9.16.2.47 -> ... 0x01 0x09 0x10 0x02 0x2f
+//
+// 1.2.840.113549.1.9.16.2.47
+constexpr unsigned char OID_SIGNINGCERTIFICATEV2[] { 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x02, 0x2f };
 
 static NSSCMSAttribute *my_NSS_CMSAttributeArray_FindAttrByOidTag(NSSCMSAttribute **attrs, SECOidTag oidtag, PRBool only)
 {
@@ -429,7 +299,7 @@ static SECStatus my_NSS_CMSArray_Add(PLArenaPool *poolp, void ***array, void *ob
         while (*p++) {
             n++;
         }
-        dest = static_cast<void **>(PORT_ArenaGrow(poolp, *array, (n + 1) * sizeof(void *), (n + 2) * sizeof(void *)));
+        dest = static_cast<void **>(PORT_ArenaGrow(poolp, static_cast<void *>(*array), (n + 1) * sizeof(void *), (n + 2) * sizeof(void *)));
     }
 
     if (dest == nullptr) {
@@ -490,16 +360,70 @@ static SECStatus my_NSS_CMSSignerInfo_AddAuthAttr(NSSCMSSignerInfo *signerinfo, 
     return my_NSS_CMSAttributeArray_AddAttr(signerinfo->cmsg->poolp, &(signerinfo->authAttr), attr);
 }
 
-unsigned int SignatureHandler::digestLength(SECOidTag digestAlgId)
+static SECOidTag ConvertHashAlgorithmToNss(HashAlgorithm digestAlgId)
 {
     switch (digestAlgId) {
-    case SEC_OID_SHA1:
+    case HashAlgorithm::Md2:
+        return SEC_OID_MD2;
+    case HashAlgorithm::Md5:
+        return SEC_OID_MD5;
+    case HashAlgorithm::Sha1:
+        return SEC_OID_SHA1;
+    case HashAlgorithm::Sha256:
+        return SEC_OID_SHA256;
+    case HashAlgorithm::Sha384:
+        return SEC_OID_SHA384;
+    case HashAlgorithm::Sha512:
+        return SEC_OID_SHA512;
+    case HashAlgorithm::Sha224:
+        return SEC_OID_SHA224;
+    case HashAlgorithm::Unknown:
+        return SEC_OID_UNKNOWN;
+    }
+    return SEC_OID_UNKNOWN;
+}
+
+static HashAlgorithm ConvertHashTypeFromNss(HASH_HashType type)
+{
+    switch (type) {
+    case HASH_AlgMD2:
+        return HashAlgorithm::Md2;
+    case HASH_AlgMD5:
+        return HashAlgorithm::Md5;
+    case HASH_AlgSHA1:
+        return HashAlgorithm::Sha1;
+    case HASH_AlgSHA256:
+        return HashAlgorithm::Sha256;
+    case HASH_AlgSHA384:
+        return HashAlgorithm::Sha384;
+    case HASH_AlgSHA512:
+        return HashAlgorithm::Sha512;
+    case HASH_AlgSHA224:
+        return HashAlgorithm::Sha224;
+#if NSS_VMAJOR >= 3 && NSS_VMINOR >= 91
+    // TODO Expose this in HashAlgorithm if PDF supports them
+    case HASH_AlgSHA3_224:
+    case HASH_AlgSHA3_256:
+    case HASH_AlgSHA3_384:
+    case HASH_AlgSHA3_512:
+#endif
+    case HASH_AlgNULL:
+    case HASH_AlgTOTAL:
+        return HashAlgorithm::Unknown;
+    }
+    return HashAlgorithm::Unknown;
+}
+
+static unsigned int digestLength(HashAlgorithm digestAlgId)
+{
+    switch (digestAlgId) {
+    case HashAlgorithm::Sha1:
         return 20;
-    case SEC_OID_SHA256:
+    case HashAlgorithm::Sha256:
         return 32;
-    case SEC_OID_SHA384:
+    case HashAlgorithm::Sha384:
         return 48;
-    case SEC_OID_SHA512:
+    case HashAlgorithm::Sha512:
         return 64;
     default:
         printf("ERROR: Unrecognized Hash ID\n");
@@ -507,42 +431,21 @@ unsigned int SignatureHandler::digestLength(SECOidTag digestAlgId)
     }
 }
 
-SECOidTag SignatureHandler::getHashOidTag(const char *digestName)
+std::string NSSSignatureVerification::getSignerName() const
 {
-    SECOidTag tag = SEC_OID_UNKNOWN;
-    if (strcmp(digestName, "SHA1") == 0) {
-        tag = SEC_OID_SHA1;
-    } else if (strcmp(digestName, "SHA256") == 0) {
-        tag = SEC_OID_SHA256;
-    } else if (strcmp(digestName, "SHA384") == 0) {
-        tag = SEC_OID_SHA384;
-    } else if (strcmp(digestName, "SHA512") == 0) {
-        tag = SEC_OID_SHA512;
-    }
-    return tag;
-}
-
-std::string SignatureHandler::getSignerName()
-{
-    char *commonName;
-
     if (!NSS_IsInitialized()) {
         return {};
     }
-
-    if (!signing_cert && !CMSSignerInfo) {
+    if (!CMSSignerInfo) {
         return {};
     }
 
-    if (!signing_cert) {
-        signing_cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB());
-    }
-
+    auto signing_cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB());
     if (!signing_cert) {
         return {};
     }
 
-    commonName = CERT_GetCommonName(&signing_cert->subject);
+    char *commonName = CERT_GetCommonName(&signing_cert->subject);
     if (!commonName) {
         return {};
     }
@@ -552,40 +455,30 @@ std::string SignatureHandler::getSignerName()
     return name;
 }
 
-const char *SignatureHandler::getSignerSubjectDN()
+std::string NSSSignatureVerification::getSignerSubjectDN() const
 {
-    if (!signing_cert && !CMSSignerInfo) {
-        return nullptr;
+    if (!CMSSignerInfo) {
+        return {};
     }
-
+    auto signing_cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB());
     if (!signing_cert) {
-        signing_cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB());
+        return {};
     }
-
-    if (!signing_cert) {
-        return nullptr;
-    }
-
-    return signing_cert->subjectName;
+    return std::string { signing_cert->subjectName };
 }
 
-HASH_HashType SignatureHandler::getHashAlgorithm()
+std::chrono::system_clock::time_point NSSSignatureVerification::getSigningTime() const
 {
-    if (hash_context && hash_context->hashobj) {
-        return hash_context->hashobj->type;
+    if (!CMSSignerInfo) {
+        return {};
     }
-    return HASH_AlgNULL;
-}
-
-time_t SignatureHandler::getSigningTime()
-{
     PRTime sTime; // time in microseconds since the epoch
 
     if (NSS_CMSSignerInfo_GetSigningTime(CMSSignerInfo, &sTime) != SECSuccess) {
-        return 0;
+        return {};
     }
 
-    return static_cast<time_t>(sTime / 1000000);
+    return std::chrono::system_clock::from_time_t(static_cast<time_t>(sTime / 1000000));
 }
 
 static X509CertificateInfo::EntityInfo getEntityInfo(CERTName *entityName)
@@ -656,51 +549,57 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromCERT(CERTCerti
     // public key info
     X509CertificateInfo::PublicKeyInfo pkInfo;
     SECKEYPublicKey *pk = CERT_ExtractPublicKey(cert);
-    switch (pk->keyType) {
-    case rsaKey:
-        pkInfo.publicKey = SECItemToGooString(pk->u.rsa.modulus);
-        pkInfo.publicKeyType = RSAKEY;
-        break;
-    case dsaKey:
-        pkInfo.publicKey = SECItemToGooString(pk->u.dsa.publicValue);
-        pkInfo.publicKeyType = DSAKEY;
-        break;
-    case ecKey:
-        pkInfo.publicKey = SECItemToGooString(pk->u.ec.publicValue);
-        pkInfo.publicKeyType = ECKEY;
-        break;
-    default:
-        pkInfo.publicKey = SECItemToGooString(cert->subjectPublicKeyInfo.subjectPublicKey);
+    if (pk) {
+        switch (pk->keyType) {
+        case rsaKey:
+            pkInfo.publicKey = SECItemToGooString(pk->u.rsa.modulus);
+            pkInfo.publicKeyType = RSAKEY;
+            break;
+        case dsaKey:
+            pkInfo.publicKey = SECItemToGooString(pk->u.dsa.publicValue);
+            pkInfo.publicKeyType = DSAKEY;
+            break;
+        case ecKey:
+            pkInfo.publicKey = SECItemToGooString(pk->u.ec.publicValue);
+            pkInfo.publicKeyType = ECKEY;
+            break;
+        default:
+            pkInfo.publicKey = SECItemToGooString(cert->subjectPublicKeyInfo.subjectPublicKey);
+            pkInfo.publicKeyType = OTHERKEY;
+            break;
+        }
+        pkInfo.publicKeyStrength = SECKEY_PublicKeyStrengthInBits(pk);
+        SECKEY_DestroyPublicKey(pk);
+    } else {
         pkInfo.publicKeyType = OTHERKEY;
-        break;
     }
-    pkInfo.publicKeyStrength = SECKEY_PublicKeyStrengthInBits(pk);
     certInfo->setPublicKeyInfo(std::move(pkInfo));
 
     certInfo->setKeyUsageExtensions(cert->keyUsage);
     certInfo->setCertificateDER(SECItemToGooString(cert->derCert));
     certInfo->setIsSelfSigned(CERT_CompareName(&cert->subject, &cert->issuer) == SECEqual);
 
-    SECKEY_DestroyPublicKey(pk);
-
     return certInfo;
 }
 
-std::unique_ptr<X509CertificateInfo> SignatureHandler::getCertificateInfo() const
+std::unique_ptr<X509CertificateInfo> NSSSignatureVerification::getCertificateInfo() const
 {
-    if (CMSSignerInfo) {
-        CERTCertificate *cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB());
-        if (!cert) {
-            return nullptr;
-        }
-        return getCertificateInfoFromCERT(cert);
-    } else {
-        if (!signing_cert) {
-            return nullptr;
-        }
-
-        return getCertificateInfoFromCERT(signing_cert);
+    if (!CMSSignerInfo) {
+        return nullptr;
     }
+    CERTCertificate *cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB());
+    if (!cert) {
+        return nullptr;
+    }
+    return getCertificateInfoFromCERT(cert);
+}
+
+std::unique_ptr<X509CertificateInfo> NSSSignatureCreation::getCertificateInfo() const
+{
+    if (!signing_cert) {
+        return nullptr;
+    }
+    return getCertificateInfoFromCERT(signing_cert);
 }
 
 static std::optional<std::string> getDefaultFirefoxCertDB()
@@ -719,22 +618,21 @@ static std::optional<std::string> getDefaultFirefoxCertDB()
     const std::string firefoxPath = std::string(env) + "/.mozilla/firefox/";
 #endif
 
-    GDir firefoxDir(firefoxPath.c_str());
-    std::unique_ptr<GDirEntry> entry;
-    while (entry = firefoxDir.getNextEntry(), entry != nullptr) {
-        if (entry->isDir() && entry->getName()->toStr().find("default") != std::string::npos) {
-            return entry->getFullPath()->toStr();
+    std::error_code ec; // ensures directory_iterator doesn't throw exceptions
+    for (const auto &entry : std::filesystem::directory_iterator { firefoxPath, ec }) {
+        if (entry.is_directory() && entry.path().string().find("default") != std::string::npos) {
+            return entry.path().string();
         }
     }
     return {};
 }
 
-std::string SignatureHandler::sNssDir;
+std::string NSSSignatureConfiguration::sNssDir;
 
 /**
  * Initialise NSS
  */
-void SignatureHandler::setNSSDir(const GooString &nssDir)
+void NSSSignatureConfiguration::setNSSDir(const GooString &nssDir)
 {
     static bool setNssDirCalled = false;
 
@@ -769,98 +667,107 @@ void SignatureHandler::setNSSDir(const GooString &nssDir)
             homeNssDb.append("/.pki/nssdb");
             initSuccess = (NSS_Init(homeNssDb.c_str()) == SECSuccess);
             sNssDir = homeNssDb.toStr();
-            if (!initSuccess) {
-                NSS_NoDB_Init(nullptr);
-            }
         }
     }
 
     if (initSuccess) {
         // Make sure NSS root certificates module is loaded
         SECMOD_AddNewModule("Root Certs", "libnssckbi.so", 0, 0);
+    } else {
+        fprintf(stderr, "NSS_Init failed: %s\n", PR_ErrorToString(PORT_GetError(), PR_LANGUAGE_I_DEFAULT));
+        NSS_NoDB_Init(nullptr);
     }
 }
 
-std::string SignatureHandler::getNSSDir()
+std::string NSSSignatureConfiguration::getNSSDir()
 {
     return sNssDir;
 }
 
 static std::function<char *(const char *)> PasswordFunction;
 
-void SignatureHandler::setNSSPasswordCallback(const std::function<char *(const char *)> &f)
+void NSSSignatureConfiguration::setNSSPasswordCallback(const std::function<char *(const char *)> &f)
 {
     PasswordFunction = f;
 }
 
-SignatureHandler::SignatureHandler(unsigned char *p7, int p7_length) : hash_context(nullptr), CMSMessage(nullptr), CMSSignedData(nullptr), CMSSignerInfo(nullptr), signing_cert(nullptr), temp_certs(nullptr)
+NSSSignatureVerification::NSSSignatureVerification(std::vector<unsigned char> &&p7data) : p7(std::move(p7data)), CMSMessage(nullptr), CMSSignedData(nullptr), CMSSignerInfo(nullptr)
 {
-    setNSSDir({});
-    CMSitem.data = p7;
-    CMSitem.len = p7_length;
+    NSSSignatureConfiguration::setNSSDir({});
+    CMSitem.data = p7.data();
+    CMSitem.len = p7.size();
     CMSMessage = CMS_MessageCreate(&CMSitem);
     CMSSignedData = CMS_SignedDataCreate(CMSMessage);
     if (CMSSignedData) {
         CMSSignerInfo = CMS_SignerInfoCreate(CMSSignedData);
-        hash_context = initHashContext();
+        SECAlgorithmID **algs = NSS_CMSSignedData_GetDigestAlgs(CMSSignedData);
+        while (*algs != nullptr) {
+            SECItem usedAlgorithm = (*algs)->algorithm;
+            auto hashAlgorithm = SECOID_FindOIDTag(&usedAlgorithm);
+            HASH_HashType hashType = HASH_GetHashTypeByOidTag(hashAlgorithm);
+            hashContext = HashContext::create(ConvertHashTypeFromNss(hashType));
+
+            if (hashContext) {
+                break;
+            }
+            ++algs;
+        }
     }
 }
 
-SignatureHandler::SignatureHandler(const char *certNickname, SECOidTag digestAlgTag)
-    : hash_length(digestLength(digestAlgTag)), digest_alg_tag(digestAlgTag), CMSitem(), hash_context(nullptr), CMSMessage(nullptr), CMSSignedData(nullptr), CMSSignerInfo(nullptr), signing_cert(nullptr), temp_certs(nullptr)
+NSSSignatureCreation::NSSSignatureCreation(const std::string &certNickname, HashAlgorithm digestAlgTag) : hashContext(HashContext::create(digestAlgTag)), signing_cert(nullptr)
 {
-    setNSSDir({});
-    CMSMessage = NSS_CMSMessage_Create(nullptr);
-    signing_cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), certNickname);
-    hash_context = HASH_Create(HASH_GetHashTypeByOidTag(digestAlgTag));
+    NSSSignatureConfiguration::setNSSDir({});
+    signing_cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), certNickname.c_str());
 }
 
-SignatureHandler::SignatureHandler() : hash_length(), digest_alg_tag(), CMSitem(), hash_context(nullptr), CMSMessage(nullptr), CMSSignedData(nullptr), CMSSignerInfo(nullptr), signing_cert(nullptr), temp_certs(nullptr)
+HashAlgorithm NSSSignatureVerification::getHashAlgorithm() const
 {
-    setNSSDir({});
-    CMSMessage = NSS_CMSMessage_Create(nullptr);
-}
-
-HASHContext *SignatureHandler::initHashContext()
-{
-
-    SECItem usedAlgorithm = NSS_CMSSignedData_GetDigestAlgs(CMSSignedData)[0]->algorithm;
-    hash_length = digestLength(SECOID_FindOIDTag(&usedAlgorithm));
-    HASH_HashType hashType;
-    hashType = HASH_GetHashTypeByOidTag(SECOID_FindOIDTag(&usedAlgorithm));
-    return HASH_Create(hashType);
-}
-
-void SignatureHandler::updateHash(unsigned char *data_block, int data_len)
-{
-    if (hash_context) {
-        HASH_Update(hash_context, data_block, data_len);
+    if (hashContext) {
+        return hashContext->getHashAlgorithm();
+    } else {
+        return HashAlgorithm::Unknown;
     }
 }
 
-void SignatureHandler::restartHash()
+void NSSSignatureVerification::addData(unsigned char *data_block, int data_len)
 {
-    if (hash_context) {
-        HASH_Destroy(hash_context);
+    if (hashContext) {
+        hashContext->updateHash(data_block, data_len);
     }
-    hash_context = HASH_Create(HASH_GetHashTypeByOidTag(digest_alg_tag));
 }
 
-SignatureHandler::~SignatureHandler()
+void NSSSignatureCreation::addData(unsigned char *data_block, int data_len)
 {
-    SECITEM_FreeItem(&CMSitem, PR_FALSE);
+    hashContext->updateHash(data_block, data_len);
+}
+
+NSSSignatureCreation::~NSSSignatureCreation()
+{
+    if (signing_cert) {
+        CERT_DestroyCertificate(signing_cert);
+    }
+}
+NSSSignatureVerification::~NSSSignatureVerification()
+{
     if (CMSMessage) {
+        // in the CMS_SignedDataCreate, we malloc some memory
+        // inside the CMSSignedData structure
+        // which is otherwise destructed by NSS_CMSMessage_Destroy
+        // but given we did the malloc ourselves
+        // we also need to free it ourselves.
+        // After we free the surrounding memory but we need
+        // a handle to it before.
+        CERTCertificate **toFree = nullptr;
+        if (CMSSignedData) {
+            toFree = CMSSignedData->tempCerts;
+        }
         NSS_CMSMessage_Destroy(CMSMessage);
+        free(static_cast<void *>(toFree));
     }
-
-    if (hash_context) {
-        HASH_Destroy(hash_context);
-    }
-
-    free(temp_certs);
 }
 
-NSSCMSMessage *SignatureHandler::CMS_MessageCreate(SECItem *cms_item)
+static NSSCMSMessage *CMS_MessageCreate(SECItem *cms_item)
 {
     if (cms_item->data) {
         return NSS_CMSMessage_CreateFromDER(cms_item, nullptr, nullptr /* Content callback */
@@ -873,7 +780,7 @@ NSSCMSMessage *SignatureHandler::CMS_MessageCreate(SECItem *cms_item)
     }
 }
 
-NSSCMSSignedData *SignatureHandler::CMS_SignedDataCreate(NSSCMSMessage *cms_msg)
+static NSSCMSSignedData *CMS_SignedDataCreate(NSSCMSMessage *cms_msg)
 {
     if (!NSS_CMSMessage_IsSigned(cms_msg)) {
         error(errInternal, 0, "Input couldn't be parsed as a CMS signature");
@@ -898,20 +805,18 @@ NSSCMSSignedData *SignatureHandler::CMS_SignedDataCreate(NSSCMSMessage *cms_msg)
 
         // tempCerts field needs to be filled for complete memory release by NSSCMSSignedData_Destroy
         signedData->tempCerts = (CERTCertificate **)gmallocn(i + 1, sizeof(CERTCertificate *));
-        memset(signedData->tempCerts, 0, (i + 1) * sizeof(CERTCertificate *));
+        memset(static_cast<void *>(signedData->tempCerts), 0, (i + 1) * sizeof(CERTCertificate *));
         // store the addresses of these temporary certificates for future release
         for (i = 0; signedData->rawCerts[i]; ++i) {
             signedData->tempCerts[i] = CERT_NewTempCertificate(CERT_GetDefaultCertDB(), signedData->rawCerts[i], nullptr, 0, 0);
         }
-
-        temp_certs = signedData->tempCerts;
         return signedData;
     } else {
         return nullptr;
     }
 }
 
-NSSCMSSignerInfo *SignatureHandler::CMS_SignerInfoCreate(NSSCMSSignedData *cms_sig_data)
+static NSSCMSSignerInfo *CMS_SignerInfoCreate(NSSCMSSignedData *cms_sig_data)
 {
     NSSCMSSignerInfo *signerInfo = NSS_CMSSignedData_GetSignerInfo(cms_sig_data, 0);
     if (!signerInfo) {
@@ -942,10 +847,8 @@ static SignatureValidationStatus NSS_SigTranslate(NSSCMSVerificationStatus nss_c
     }
 }
 
-SignatureValidationStatus SignatureHandler::validateSignature()
+SignatureValidationStatus NSSSignatureVerification::validateSignature()
 {
-    unsigned char *digest_buffer = nullptr;
-
     if (!CMSSignedData) {
         return SIGNATURE_GENERIC_ERROR;
     }
@@ -954,18 +857,15 @@ SignatureValidationStatus SignatureHandler::validateSignature()
         return SIGNATURE_GENERIC_ERROR;
     }
 
-    if (!hash_context) {
+    if (!hashContext) {
         return SIGNATURE_GENERIC_ERROR;
     }
 
-    digest_buffer = (unsigned char *)PORT_Alloc(hash_length);
-    unsigned int result_len = 0;
-
-    HASH_End(hash_context, digest_buffer, &result_len, hash_length);
+    std::vector<unsigned char> digest_buffer = hashContext->endHash();
 
     SECItem digest;
-    digest.data = digest_buffer;
-    digest.len = hash_length;
+    digest.data = digest_buffer.data();
+    digest.len = digest_buffer.size();
 
     if ((NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB())) == nullptr) {
         CMSSignerInfo->verificationStatus = NSSCMSVS_SigningCertNotFound;
@@ -977,30 +877,32 @@ SignatureValidationStatus SignatureHandler::validateSignature()
           This means it's not a detached type signature
           so the digest is contained in SignedData->contentInfo
         */
-        if (memcmp(digest.data, content_info_data->data, hash_length) == 0 && digest.len == content_info_data->len) {
-            PORT_Free(digest_buffer);
+        if (digest.len == content_info_data->len && memcmp(digest.data, content_info_data->data, digest.len) == 0) {
             return SIGNATURE_VALID;
         } else {
-            PORT_Free(digest_buffer);
             return SIGNATURE_DIGEST_MISMATCH;
         }
 
     } else if (NSS_CMSSignerInfo_Verify(CMSSignerInfo, &digest, nullptr) != SECSuccess) {
-
-        PORT_Free(digest_buffer);
         return NSS_SigTranslate(CMSSignerInfo->verificationStatus);
     } else {
-        PORT_Free(digest_buffer);
         return SIGNATURE_VALID;
     }
 }
 
-CertificateValidationStatus SignatureHandler::validateCertificate(time_t validation_time, bool ocspRevocationCheck, bool useAIACertFetch)
+void NSSSignatureVerification::validateCertificateAsync(std::chrono::system_clock::time_point validation_time, bool ocspRevocationCheck, bool useAIACertFetch, const std::function<void()> &doneCallback)
 {
+    cachedValidationStatus.reset();
     CERTCertificate *cert;
 
     if (!CMSSignerInfo) {
-        return CERTIFICATE_GENERIC_ERROR;
+        validationStatus = std::async([doneCallback]() {
+            if (doneCallback) {
+                doneCallback();
+            }
+            return CERTIFICATE_GENERIC_ERROR;
+        });
+        return;
     }
 
     if ((cert = NSS_CMSSignerInfo_GetSigningCertificate(CMSSignerInfo, CERT_GetDefaultCertDB())) == nullptr) {
@@ -1008,8 +910,8 @@ CertificateValidationStatus SignatureHandler::validateCertificate(time_t validat
     }
 
     PRTime vTime = 0; // time in microseconds since the epoch, special value 0 means now
-    if (validation_time > 0) {
-        vTime = 1000000 * (PRTime)validation_time;
+    if (validation_time > std::chrono::system_clock::time_point {}) {
+        vTime = 1000000 * (PRTime)std::chrono::system_clock::to_time_t(validation_time);
     }
     CERTValInParam inParams[4];
     inParams[0].type = cert_pi_revocationFlags;
@@ -1030,87 +932,118 @@ CertificateValidationStatus SignatureHandler::validateCertificate(time_t validat
 
     CERT_PKIXVerifyCert(cert, certificateUsageEmailSigner, inParams, nullptr, CMSSignerInfo->cmsg->pwfn_arg);
 
-    switch (PORT_GetError()) {
-    // 0 not defined in SECErrorCodes, it means success for this purpose.
-    case 0:
-        return CERTIFICATE_TRUSTED;
+    // Here we are just faking the asynchronousness. It should
+    // somehow be the call to CERT_PXIXVerifyCert that would
+    // be put in the thread, but I'm not sure about all of the
+    // thread safety of nss.
 
-    case SEC_ERROR_UNKNOWN_ISSUER:
-        return CERTIFICATE_UNKNOWN_ISSUER;
+    validationStatus = std::async([result = PORT_GetError(), doneCallback]() {
+        if (doneCallback) {
+            doneCallback();
+        }
 
-    case SEC_ERROR_UNTRUSTED_ISSUER:
-        return CERTIFICATE_UNTRUSTED_ISSUER;
+        switch (result) {
+        // 0 not defined in SECErrorCodes, it means success for this purpose.
+        case 0:
+            return CERTIFICATE_TRUSTED;
 
-    case SEC_ERROR_REVOKED_CERTIFICATE:
-        return CERTIFICATE_REVOKED;
+        case SEC_ERROR_UNKNOWN_ISSUER:
+            return CERTIFICATE_UNKNOWN_ISSUER;
 
-    case SEC_ERROR_EXPIRED_CERTIFICATE:
-        return CERTIFICATE_EXPIRED;
-    }
+        case SEC_ERROR_UNTRUSTED_ISSUER:
+            return CERTIFICATE_UNTRUSTED_ISSUER;
 
-    return CERTIFICATE_GENERIC_ERROR;
+        case SEC_ERROR_REVOKED_CERTIFICATE:
+            return CERTIFICATE_REVOKED;
+
+        case SEC_ERROR_EXPIRED_CERTIFICATE:
+            return CERTIFICATE_EXPIRED;
+        }
+
+        return CERTIFICATE_GENERIC_ERROR;
+    });
 }
 
-std::unique_ptr<GooString> SignatureHandler::signDetached(const char *password) const
+CertificateValidationStatus NSSSignatureVerification::validateCertificateResult()
 {
-    if (!hash_context) {
-        return nullptr;
+    if (cachedValidationStatus) {
+        return cachedValidationStatus.value();
     }
-    unsigned char *digest_buffer = reinterpret_cast<unsigned char *>(PORT_Alloc(hash_length));
-    unsigned int result_len = 0;
-    HASH_End(hash_context, digest_buffer, &result_len, hash_length);
+    if (!validationStatus.valid()) {
+        return CERTIFICATE_NOT_VERIFIED;
+    }
+    validationStatus.wait();
+    cachedValidationStatus = validationStatus.get();
+    return cachedValidationStatus.value();
+}
+
+std::variant<std::vector<unsigned char>, CryptoSign::SigningError> NSSSignatureCreation::signDetached(const std::string &password)
+{
+    if (!hashContext) {
+        return CryptoSign::SigningError::InternalError;
+    }
+    std::vector<unsigned char> digest_buffer = hashContext->endHash();
     SECItem digest;
-    digest.data = digest_buffer;
-    digest.len = result_len;
+    digest.data = digest_buffer.data();
+    digest.len = digest_buffer.size();
 
     /////////////////////////////////////
     /// Code from LibreOffice under MPLv2
     /////////////////////////////////////
-
-    NSSCMSMessage *cms_msg = NSS_CMSMessage_Create(nullptr);
+    struct NSSCMSMessageDestroyer
+    {
+        void operator()(NSSCMSMessage *message) { NSS_CMSMessage_Destroy(message); }
+    };
+    std::unique_ptr<NSSCMSMessage, NSSCMSMessageDestroyer> cms_msg { NSS_CMSMessage_Create(nullptr) };
     if (!cms_msg) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
-    NSSCMSSignedData *cms_sd = NSS_CMSSignedData_Create(cms_msg);
+    NSSCMSSignedData *cms_sd = NSS_CMSSignedData_Create(cms_msg.get());
     if (!cms_sd) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
-    NSSCMSContentInfo *cms_cinfo = NSS_CMSMessage_GetContentInfo(cms_msg);
+    NSSCMSContentInfo *cms_cinfo = NSS_CMSMessage_GetContentInfo(cms_msg.get());
 
-    if (NSS_CMSContentInfo_SetContent_SignedData(cms_msg, cms_cinfo, cms_sd) != SECSuccess) {
-        return nullptr;
+    if (NSS_CMSContentInfo_SetContent_SignedData(cms_msg.get(), cms_cinfo, cms_sd) != SECSuccess) {
+        return CryptoSign::SigningError::GenericError;
     }
 
     cms_cinfo = NSS_CMSSignedData_GetContentInfo(cms_sd);
 
     // Attach NULL data as detached data
-    if (NSS_CMSContentInfo_SetContent_Data(cms_msg, cms_cinfo, nullptr, PR_TRUE) != SECSuccess) {
-        return nullptr;
+    if (NSS_CMSContentInfo_SetContent_Data(cms_msg.get(), cms_cinfo, nullptr, PR_TRUE) != SECSuccess) {
+        return CryptoSign::SigningError::GenericError;
     }
 
     // hardcode SHA256 these days...
-    NSSCMSSignerInfo *cms_signer = NSS_CMSSignerInfo_Create(cms_msg, signing_cert, SEC_OID_SHA256);
+    NSSCMSSignerInfo *cms_signer = NSS_CMSSignerInfo_Create(cms_msg.get(), signing_cert, SEC_OID_SHA256);
     if (!cms_signer) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
     if (NSS_CMSSignerInfo_IncludeCerts(cms_signer, NSSCMSCM_CertChain, certUsageEmailSigner) != SECSuccess) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
     if (NSS_CMSSignedData_AddCertificate(cms_sd, signing_cert) != SECSuccess) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
     if (NSS_CMSSignedData_AddSignerInfo(cms_sd, cms_signer) != SECSuccess) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
     if (NSS_CMSSignedData_SetDigestValue(cms_sd, SEC_OID_SHA256, &digest) != SECSuccess) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
+
+    struct PLArenaFreeFalse
+    {
+        void operator()(PLArenaPool *arena) { PORT_FreeArena(arena, PR_FALSE); }
+    };
+    std::unique_ptr<PLArenaPool, PLArenaFreeFalse> arena { PORT_NewArena(CryptoSign::maxSupportedSignatureSize) };
 
     // Add the signing certificate as a signed attribute.
     ESSCertIDv2 *aCertIDs[2];
@@ -1118,14 +1051,14 @@ std::unique_ptr<GooString> SignatureHandler::signDetached(const char *password) 
     // Write ESSCertIDv2.hashAlgorithm.
     aCertID.hashAlgorithm.algorithm.data = nullptr;
     aCertID.hashAlgorithm.parameters.data = nullptr;
-    SECOID_SetAlgorithmID(nullptr, &aCertID.hashAlgorithm, SEC_OID_SHA256, nullptr);
+    SECOID_SetAlgorithmID(arena.get(), &aCertID.hashAlgorithm, SEC_OID_SHA256, nullptr);
 
     // Write ESSCertIDv2.certHash.
     SECItem aCertHashItem;
     unsigned char certhash[32];
     SECStatus rv = PK11_HashBuf(SEC_OID_SHA256, certhash, signing_cert->derCert.data, signing_cert->derCert.len);
     if (rv != SECSuccess) {
-        return nullptr;
+        return {};
     }
 
     aCertHashItem.type = siBuffer;
@@ -1148,7 +1081,7 @@ std::unique_ptr<GooString> SignatureHandler::signDetached(const char *password) 
 
     SECItem *pEncodedCertificate = SEC_ASN1EncodeItem(nullptr, nullptr, &aCertificate, SigningCertificateV2Template);
     if (!pEncodedCertificate) {
-        return nullptr;
+        return {};
     }
 
     NSSCMSAttribute aAttribute;
@@ -1163,15 +1096,15 @@ std::unique_ptr<GooString> SignatureHandler::signDetached(const char *password) 
     aAttribute.values = pAttributeValues;
 
     SECOidData aOidData;
-    aOidData.oid.data = nullptr;
     /*
      * id-aa-signingCertificateV2 OBJECT IDENTIFIER ::=
      * { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) pkcs9(9)
      *   smime(16) id-aa(2) 47 }
      */
-    if (my_SEC_StringToOID(&aOidData.oid, "1.2.840.113549.1.9.16.2.47", 0) != SECSuccess) {
-        return nullptr;
-    }
+    auto cert_oid_buffer = std::to_array(OID_SIGNINGCERTIFICATEV2);
+    aOidData.oid.type = siBuffer;
+    aOidData.oid.data = cert_oid_buffer.data();
+    aOidData.oid.len = cert_oid_buffer.size();
 
     aOidData.offset = SEC_OID_UNKNOWN;
     aOidData.desc = "id-aa-signingCertificateV2";
@@ -1182,32 +1115,27 @@ std::unique_ptr<GooString> SignatureHandler::signDetached(const char *password) 
     aAttribute.encoded = PR_TRUE;
 
     if (my_NSS_CMSSignerInfo_AddAuthAttr(cms_signer, &aAttribute) != SECSuccess) {
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
     SECItem cms_output;
     cms_output.data = nullptr;
     cms_output.len = 0;
-    PLArenaPool *arena = PORT_NewArena(10000);
 
-    NSSCMSEncoderContext *cms_ecx = NSS_CMSEncoder_Start(cms_msg, nullptr, nullptr, &cms_output, arena, passwordCallback, const_cast<char *>(password), nullptr, nullptr, nullptr, nullptr);
+    NSSCMSEncoderContext *cms_ecx = NSS_CMSEncoder_Start(cms_msg.get(), nullptr, nullptr, &cms_output, arena.get(), passwordCallback, password.empty() ? nullptr : const_cast<char *>(password.c_str()), nullptr, nullptr, nullptr, nullptr);
     if (!cms_ecx) {
-        PORT_FreeArena(arena, PR_FALSE);
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
     if (NSS_CMSEncoder_Finish(cms_ecx) != SECSuccess) {
-        PORT_FreeArena(arena, PR_FALSE);
-        return nullptr;
+        return CryptoSign::SigningError::GenericError;
     }
 
-    GooString *signature = new GooString(reinterpret_cast<const char *>(cms_output.data), cms_output.len);
+    auto signature = std::vector<unsigned char>(cms_output.data, cms_output.data + cms_output.len);
 
     SECITEM_FreeItem(pEncodedCertificate, PR_TRUE);
-    NSS_CMSMessage_Destroy(cms_msg);
-    PORT_FreeArena(arena, PR_FALSE);
 
-    return std::unique_ptr<GooString>(signature);
+    return signature;
 }
 
 static char *GetPasswordFunction(PK11SlotInfo *slot, PRBool /*retry*/, void * /*arg*/)
@@ -1219,11 +1147,31 @@ static char *GetPasswordFunction(PK11SlotInfo *slot, PRBool /*retry*/, void * /*
     return nullptr;
 }
 
-std::vector<std::unique_ptr<X509CertificateInfo>> SignatureHandler::getAvailableSigningCertificates()
+std::unique_ptr<CryptoSign::VerificationInterface> NSSCryptoSignBackend::createVerificationHandler(std::vector<unsigned char> &&pkcs7, CryptoSign::SignatureType type)
+{
+    switch (type) {
+    case CryptoSign::SignatureType::unknown_signature_type:
+    case CryptoSign::SignatureType::unsigned_signature_field:
+    case CryptoSign::SignatureType::g10c_pgp_signature_detached:
+        return {};
+    case CryptoSign::SignatureType::ETSI_CAdES_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_sha1:
+        return std::make_unique<NSSSignatureVerification>(std::move(pkcs7));
+    }
+    return {};
+}
+
+std::unique_ptr<CryptoSign::SigningInterface> NSSCryptoSignBackend::createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag)
+{
+    return std::make_unique<NSSSignatureCreation>(certID, digestAlgTag);
+}
+
+std::vector<std::unique_ptr<X509CertificateInfo>> NSSCryptoSignBackend::getAvailableSigningCertificates()
 {
     // set callback, in case one of the slots has a password set
     PK11_SetPasswordFunc(GetPasswordFunction);
-    setNSSDir({});
+    NSSSignatureConfiguration::setNSSDir({});
 
     std::vector<std::unique_ptr<X509CertificateInfo>> certsList;
     PK11SlotList *slotList = PK11_GetAllTokens(CKM_INVALID_MECHANISM, PR_FALSE, PR_FALSE, nullptr);
@@ -1261,3 +1209,37 @@ std::vector<std::unique_ptr<X509CertificateInfo>> SignatureHandler::getAvailable
 
     return certsList;
 }
+
+void HashContext::updateHash(unsigned char *data_block, int data_len)
+{
+    HASH_Update(hash_context.get(), data_block, data_len);
+}
+
+std::vector<unsigned char> HashContext::endHash()
+{
+    auto hash_length = digestLength(digest_alg_tag);
+    std::vector<unsigned char> digestBuffer(hash_length);
+    unsigned int result_length = 0;
+    HASH_End(hash_context.get(), digestBuffer.data(), &result_length, digestBuffer.size());
+    digestBuffer.resize(result_length);
+
+    return digestBuffer;
+}
+
+HashContext::HashContext(HashAlgorithm algorithm, private_tag) : hash_context { HASH_Create(HASH_GetHashTypeByOidTag(ConvertHashAlgorithmToNss(algorithm))) }, digest_alg_tag(algorithm) { }
+
+std::unique_ptr<HashContext> HashContext::create(HashAlgorithm algorithm)
+{
+    auto ctx = std::make_unique<HashContext>(algorithm, private_tag {});
+    if (ctx->hash_context) {
+        return ctx;
+    }
+    return {};
+}
+
+HashAlgorithm HashContext::getHashAlgorithm() const
+{
+    return digest_alg_tag;
+}
+
+NSSCryptoSignBackend::~NSSCryptoSignBackend() = default;

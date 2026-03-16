@@ -16,10 +16,11 @@
 // Copyright (C) 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2013 Yury G. Kudryashov <urkud.urkud@gmail.com>
 // Copyright (C) 2014, 2017 Adrian Johnson <ajohnson@redneon.com>
-// Copyright (C) 2018, 2020, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2018, 2020, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright (C) 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2021, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 <r.coeffier@bee-buzziness.com>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -42,7 +43,10 @@
 #include "UnicodeMap.h"
 #include "PDFDocEncoding.h"
 #include "Error.h"
+#include "UTF.h"
 #include "Win32Console.h"
+
+#include <filesystem>
 
 static bool doList = false;
 static int saveNum = 0;
@@ -70,24 +74,46 @@ static const ArgDesc argDesc[] = { { "-list", argFlag, &doList, 0, "list all emb
                                    { "-?", argFlag, &printHelp, 0, "print usage information" },
                                    {} };
 
+static std::string getFileName(const GooString &s, const UnicodeMap &uMap)
+{
+    int j;
+    Unicode u;
+    bool isUnicode;
+    char uBuf[8];
+    std::string res;
+    if (hasUnicodeByteOrderMarkAndLengthIsEven(s.toStr())) {
+        isUnicode = true;
+        j = 2;
+    } else {
+        isUnicode = false;
+        j = 0;
+    }
+    while (j < s.getLength()) {
+        if (isUnicode) {
+            u = ((s.getChar(j) & 0xff) << 8) | (s.getChar(j + 1) & 0xff);
+            j += 2;
+        } else {
+            u = pdfDocEncoding[s.getChar(j) & 0xff];
+            ++j;
+        }
+        const int n = uMap.mapUnicode(u, uBuf, sizeof(uBuf));
+        res.append(uBuf, n);
+    }
+    return res;
+}
+
 int main(int argc, char *argv[])
 {
     std::unique_ptr<PDFDoc> doc;
     GooString *fileName;
     const UnicodeMap *uMap;
     std::optional<GooString> ownerPW, userPW;
-    char uBuf[8];
-    char path[1024];
-    char *p;
     bool ok;
     bool hasSaveFile;
     std::vector<std::unique_ptr<FileSpec>> embeddedFiles;
-    int nFiles, nPages, n, i, j;
+    int nFiles, nPages, i;
     Page *page;
     Annots *annots;
-    const GooString *s1;
-    Unicode u;
-    bool isUnicode;
 
     Win32Console win32Console(&argc, &argv);
 
@@ -166,80 +192,46 @@ int main(int argc, char *argv[])
         for (i = 0; i < nFiles; ++i) {
             const std::unique_ptr<FileSpec> &fileSpec = embeddedFiles[i];
             printf("%d: ", i + 1);
-            s1 = fileSpec->getFileName();
+            const GooString *s1 = fileSpec->getFileName();
             if (!s1) {
                 return 3;
             }
-            if (s1->hasUnicodeMarker()) {
-                isUnicode = true;
-                j = 2;
-            } else {
-                isUnicode = false;
-                j = 0;
-            }
-            while (j < s1->getLength()) {
-                if (isUnicode) {
-                    u = ((s1->getChar(j) & 0xff) << 8) | (s1->getChar(j + 1) & 0xff);
-                    j += 2;
-                } else {
-                    u = pdfDocEncoding[s1->getChar(j) & 0xff];
-                    ++j;
-                }
-                n = uMap->mapUnicode(u, uBuf, sizeof(uBuf));
-                fwrite(uBuf, 1, n, stdout);
-            }
-            fputc('\n', stdout);
+            printf("%s\n", getFileName(*s1, *uMap).c_str());
         }
 
         // save all embedded files
     } else if (saveAll) {
+        std::filesystem::path basePath = savePath;
+        if (basePath.empty()) {
+            basePath = std::filesystem::current_path();
+        }
+        basePath = basePath.lexically_normal();
+
         for (i = 0; i < nFiles; ++i) {
             const std::unique_ptr<FileSpec> &fileSpec = embeddedFiles[i];
-            if (savePath[0]) {
-                n = strlen(savePath);
-                if (n > (int)sizeof(path) - 2) {
-                    n = sizeof(path) - 2;
-                }
-                memcpy(path, savePath, n);
-                path[n] = '/';
-                p = path + n + 1;
-            } else {
-                p = path;
-            }
-            s1 = fileSpec->getFileName();
+
+            const GooString *s1 = fileSpec->getFileName();
             if (!s1) {
                 return 3;
             }
-            if (s1->hasUnicodeMarker()) {
-                isUnicode = true;
-                j = 2;
-            } else {
-                isUnicode = false;
-                j = 0;
+            const std::string currentFileName = getFileName(*s1, *uMap);
+            if (currentFileName.empty()) {
+                return 3;
             }
-            while (j < s1->getLength()) {
-                if (isUnicode) {
-                    u = ((s1->getChar(j) & 0xff) << 8) | (s1->getChar(j + 1) & 0xff);
-                    j += 2;
-                } else {
-                    u = pdfDocEncoding[s1->getChar(j) & 0xff];
-                    ++j;
-                }
-                n = uMap->mapUnicode(u, uBuf, sizeof(uBuf));
-                if (p + n >= path + sizeof(path)) {
-                    break;
-                }
-                memcpy(p, uBuf, n);
-                p += n;
+            std::filesystem::path filePath = basePath;
+            filePath = filePath.append(currentFileName).lexically_normal();
+
+            if (!filePath.generic_string().starts_with(basePath.generic_string())) {
+                error(errIO, -1, "Preventing directory traversal");
+                return 3;
             }
-            *p = '\0';
 
             auto *embFile = fileSpec->getEmbeddedFile();
             if (!embFile || !embFile->isOk()) {
                 return 3;
             }
-            if (!embFile->save(path)) {
-                error(errIO, -1, "Error saving embedded file as '{0:s}'", p);
+            if (!embFile->save(filePath.generic_string())) {
+                error(errIO, -1, "Error saving embedded file as '{0:s}'", filePath.c_str());
                 return 2;
             }
         }
@@ -249,8 +241,12 @@ int main(int argc, char *argv[])
         if (hasSaveFile) {
             for (i = 0; i < nFiles; ++i) {
                 const std::unique_ptr<FileSpec> &fileSpec = embeddedFiles[i];
-                s1 = fileSpec->getFileName();
-                if (strcmp(s1->c_str(), saveFile) == 0) {
+                const GooString *s1 = fileSpec->getFileName();
+                if (!s1) {
+                    continue;
+                }
+                const std::string currentFileName = getFileName(*s1, *uMap);
+                if (currentFileName == saveFile) {
                     saveNum = i + 1;
                     break;
                 }
@@ -262,46 +258,33 @@ int main(int argc, char *argv[])
         }
 
         const std::unique_ptr<FileSpec> &fileSpec = embeddedFiles[saveNum - 1];
-        if (savePath[0]) {
-            p = savePath;
-        } else {
-            p = path;
-            s1 = fileSpec->getFileName();
+        std::string targetPath = savePath;
+        if (targetPath.empty()) {
+            // The user hasn't given a path to save, just use the filename specified in the pdf as name
+            const GooString *s1 = fileSpec->getFileName();
             if (!s1) {
                 return 3;
             }
-            if (s1->hasUnicodeMarker()) {
-                isUnicode = true;
-                j = 2;
-            } else {
-                isUnicode = false;
-                j = 0;
+            const std::string targetFileName = getFileName(*s1, *uMap);
+            targetPath.append(targetFileName);
+
+            const std::filesystem::path basePath = std::filesystem::current_path().lexically_normal();
+            std::filesystem::path filePath = basePath;
+            filePath = filePath.append(targetPath).lexically_normal();
+
+            if (!filePath.generic_string().starts_with(basePath.generic_string())) {
+                error(errIO, -1, "Preventing directory traversal");
+                return 3;
             }
-            while (j < s1->getLength()) {
-                if (isUnicode) {
-                    u = ((s1->getChar(j) & 0xff) << 8) | (s1->getChar(j + 1) & 0xff);
-                    j += 2;
-                } else {
-                    u = pdfDocEncoding[s1->getChar(j) & 0xff];
-                    ++j;
-                }
-                n = uMap->mapUnicode(u, uBuf, sizeof(uBuf));
-                if (p + n >= path + sizeof(path)) {
-                    break;
-                }
-                memcpy(p, uBuf, n);
-                p += n;
-            }
-            *p = '\0';
-            p = path;
+            targetPath = filePath.generic_string();
         }
 
         auto *embFile = fileSpec->getEmbeddedFile();
         if (!embFile || !embFile->isOk()) {
             return 3;
         }
-        if (!embFile->save(p)) {
-            error(errIO, -1, "Error saving embedded file as '{0:s}'", p);
+        if (!embFile->save(targetPath)) {
+            error(errIO, -1, "Error saving embedded file as '{0:s}'", targetPath.c_str());
             return 2;
         }
     }

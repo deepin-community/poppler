@@ -6,9 +6,10 @@
 //
 // Copyright 2013, 2014 Igalia S.L.
 // Copyright 2014 Luigi Scarso <luigi.scarso@gmail.com>
-// Copyright 2014, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright 2014, 2018, 2019, 2021, 2023, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright 2021 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -128,8 +129,7 @@ public:
     const Object *getValue() const { return &value; }
     static Object *getDefaultValue(Type type);
 
-    // The caller gets the ownership of the return GooString and is responsible of deleting it
-    std::unique_ptr<GooString> getName() const { return std::make_unique<GooString>(type == UserProperty ? name.c_str() : getTypeName()); }
+    const char *getName() const { return (type == UserProperty ? name.c_str() : getTypeName()); }
 
     // The revision is optional, and defaults to zero.
     unsigned int getRevision() const { return revision; }
@@ -153,7 +153,7 @@ private:
     GooString name;
     Object value;
     bool hidden;
-    GooString *formatted;
+    std::optional<GooString> formatted;
 
     bool checkType(StructElement *element = nullptr);
     static Type getTypeForName(const char *name, StructElement *element = nullptr);
@@ -242,27 +242,30 @@ public:
 
     int getMCID() const { return c->mcid; }
     Ref getObjectRef() const { return c->ref; }
-    Ref getParentRef() { return isContent() ? parent->getParentRef() : s->parentRef; }
+    Ref getParentRef() const { return isContent() ? parent->getParentRef() : s->parentRef; }
+    StructElement *getParent() const { return parent; } // returns NULL if parent is StructTreeRoot
     bool hasPageRef() const;
     bool getPageRef(Ref &ref) const;
+    bool hasStmRef() const { return stmRef.isRef(); }
+    bool getStmRef(Ref &ref) const;
     StructTreeRoot *getStructTreeRoot() { return treeRoot; }
 
     // Optional element identifier.
-    const GooString *getID() const { return isContent() ? nullptr : s->id; }
-    GooString *getID() { return isContent() ? nullptr : s->id; }
+    const GooString *getID() const { return isContent() ? nullptr : s->id.get(); }
+    GooString *getID() { return isContent() ? nullptr : s->id.get(); }
 
     // Optional ISO language name, e.g. en_US
     GooString *getLanguage()
     {
         if (!isContent() && s->language) {
-            return s->language;
+            return s->language.get();
         }
         return parent ? parent->getLanguage() : nullptr;
     }
     const GooString *getLanguage() const
     {
         if (!isContent() && s->language) {
-            return s->language;
+            return s->language.get();
         }
         return parent ? parent->getLanguage() : nullptr;
     }
@@ -277,12 +280,12 @@ public:
     }
 
     // Optional element title, in human-readable form.
-    const GooString *getTitle() const { return isContent() ? nullptr : s->title; }
-    GooString *getTitle() { return isContent() ? nullptr : s->title; }
+    const GooString *getTitle() const { return isContent() ? nullptr : s->title.get(); }
+    GooString *getTitle() { return isContent() ? nullptr : s->title.get(); }
 
     // Optional element expanded abbreviation text.
-    const GooString *getExpandedAbbr() const { return isContent() ? nullptr : s->expandedAbbr; }
-    GooString *getExpandedAbbr() { return isContent() ? nullptr : s->expandedAbbr; }
+    const GooString *getExpandedAbbr() const { return isContent() ? nullptr : s->expandedAbbr.get(); }
+    GooString *getExpandedAbbr() { return isContent() ? nullptr : s->expandedAbbr.get(); }
 
     unsigned getNumChildren() const { return isContent() ? 0 : s->elements.size(); }
     const StructElement *getChild(int i) const { return isContent() ? nullptr : s->elements.at(i); }
@@ -308,11 +311,11 @@ public:
 
     const Attribute *findAttribute(Attribute::Type attributeType, bool inherit = false, Attribute::Owner owner = Attribute::UnknownOwner) const;
 
-    const GooString *getAltText() const { return isContent() ? nullptr : s->altText; }
-    GooString *getAltText() { return isContent() ? nullptr : s->altText; }
+    const GooString *getAltText() const { return isContent() ? nullptr : s->altText.get(); }
+    GooString *getAltText() { return isContent() ? nullptr : s->altText.get(); }
 
-    const GooString *getActualText() const { return isContent() ? nullptr : s->actualText; }
-    GooString *getActualText() { return isContent() ? nullptr : s->actualText; }
+    const GooString *getActualText() const { return isContent() ? nullptr : s->actualText.get(); }
+    GooString *getActualText() { return isContent() ? nullptr : s->actualText.get(); }
 
     // Content text referenced by the element:
     //
@@ -329,7 +332,7 @@ public:
     //
     GooString *getText(bool recursive = true) const { return appendSubTreeText(nullptr, recursive); }
 
-    const TextSpanArray getTextSpans() const
+    TextSpanArray getTextSpans() const
     {
         if (!isContent()) {
             return TextSpanArray();
@@ -350,12 +353,12 @@ private:
     struct StructData
     {
         Ref parentRef;
-        GooString *altText;
-        GooString *actualText;
-        GooString *id;
-        GooString *title;
-        GooString *expandedAbbr;
-        GooString *language;
+        std::unique_ptr<GooString> altText;
+        std::unique_ptr<GooString> actualText;
+        std::unique_ptr<GooString> id;
+        std::unique_ptr<GooString> title;
+        std::unique_ptr<GooString> expandedAbbr;
+        std::unique_ptr<GooString> language;
         unsigned int revision;
         ElemPtrArray elements;
         AttrPtrArray attributes;
@@ -391,13 +394,13 @@ private:
         ContentData *c;
     };
 
-    StructElement(Dict *elementDict, StructTreeRoot *treeRootA, StructElement *parentA, std::set<int> &seen);
+    StructElement(Dict *elementDict, StructTreeRoot *treeRootA, StructElement *parentA, RefRecursionChecker &seen);
     StructElement(int mcid, StructTreeRoot *treeRootA, StructElement *parentA);
     StructElement(const Ref ref, StructTreeRoot *treeRootA, StructElement *parentA);
 
     void parse(Dict *elementDict);
-    StructElement *parseChild(const Object *ref, Object *childObj, std::set<int> &seen);
-    void parseChildren(Dict *element, std::set<int> &seen);
+    StructElement *parseChild(const Object *ref, Object *childObj, RefRecursionChecker &seen);
+    void parseChildren(Dict *element, RefRecursionChecker &seen);
     void parseAttributes(Dict *attributes, bool keepExisting = false);
 
     friend class StructTreeRoot;

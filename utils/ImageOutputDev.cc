@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2007, 2011, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007, 2011, 2018, 2019, 2021, 2022, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Rainer Keller <class321@gmx.de>
 // Copyright (C) 2008 Timothy Lee <timothy.lee@siriushk.com>
 // Copyright (C) 2008 Vasile Gaburici <gaburici@cs.umd.edu>
@@ -26,6 +26,9 @@
 // Copyright (C) 2017 Caolán McNamara <caolanm@redhat.com>
 // Copyright (C) 2018 Andreas Gruenbacher <agruenba@redhat.com>
 // Copyright (C) 2020 mrbax <12640-mrbax@users.noreply.gitlab.freedesktop.org>
+// Copyright (C) 2024 Fernando Herrera <fherrera@onirica.com>
+// Copyright (C) 2024 Sebastian J. Bronner <waschtl@sbronner.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -65,9 +68,10 @@ ImageOutputDev::ImageOutputDev(char *fileRootA, bool pageNamesA, bool listImages
     dumpJBIG2 = false;
     dumpCCITT = false;
     pageNames = pageNamesA;
+    printFilenames = false;
     imgNum = 0;
     pageNum = 0;
-    ok = true;
+    errorCode = 0;
     if (listImages) {
         printf("page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio\n");
         printf("--------------------------------------------------------------------------------------------\n");
@@ -300,16 +304,20 @@ long ImageOutputDev::getInlineImageLength(Stream *str, int width, int height, Gf
     long len;
 
     if (colorMap) {
-        ImageStream *imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        imgStr->reset();
+        ImageStream imgStr(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
+        if (!imgStr.reset()) {
+            imgStr.close();
+            return 0;
+        }
         for (int y = 0; y < height; y++) {
-            imgStr->getLine();
+            imgStr.getLine();
         }
 
-        imgStr->close();
-        delete imgStr;
+        imgStr.close();
     } else {
-        str->reset();
+        if (!str->reset()) {
+            return 0;
+        }
         for (int y = 0; y < height; y++) {
             int size = (width + 7) / 8;
             for (int x = 0; x < size; x++) {
@@ -340,12 +348,18 @@ void ImageOutputDev::writeRawImage(Stream *str, const char *ext)
     ++imgNum;
     if (!(f = fopen(fileName, "wb"))) {
         error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
+        errorCode = 2;
         return;
     }
 
     // initialize stream
     str = str->getNextStream();
-    str->reset();
+    if (!str->reset()) {
+        fclose(f);
+        error(errIO, -1, "Couldn't reset stream");
+        errorCode = 2;
+        return;
+    }
 
     // copy the stream
     while ((c = str->getChar()) != EOF) {
@@ -360,7 +374,6 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
 {
     FILE *f = nullptr; /* squelch bogus compiler warning */
     ImageStream *imgStr = nullptr;
-    unsigned char *row;
     unsigned char *rowp;
     unsigned char *p;
     GfxRGB rgb;
@@ -374,11 +387,13 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
         ++imgNum;
         if (!(f = fopen(fileName, "wb"))) {
             error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
+            errorCode = 2;
             return;
         }
 
         if (!writer->init(f, width, height, 72, 72)) {
             error(errIO, -1, "Error writing '{0:s}'", fileName);
+            errorCode = 2;
             return;
         }
     }
@@ -388,19 +403,28 @@ void ImageOutputDev::writeImageFile(ImgWriter *writer, ImageFormat format, const
         pixelSize = 2 * sizeof(unsigned int);
     }
 
-    row = (unsigned char *)gmallocn_checkoverflow(width, pixelSize);
-    if (!row) {
-        error(errIO, -1, "Image data for '{0:s}' is too big. {1:d} width with {2:d} bytes per pixel", fileName, width, pixelSize);
-        return;
-    }
-
     if (format != imgMonochrome) {
         // initialize stream
         imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        imgStr->reset();
+        if (!imgStr->reset()) {
+            error(errIO, -1, "Stream reset failed");
+            errorCode = 3;
+            return;
+        }
     } else {
         // initialize stream
-        str->reset();
+        if (!str->reset()) {
+            errorCode = 3;
+            error(errIO, -1, "Stream reset failed");
+            return;
+        }
+    }
+
+    unsigned char *row = (unsigned char *)gmallocn_checkoverflow(width, pixelSize);
+    if (!row) {
+        error(errIO, -1, "Image data for '{0:s}' is too big. {1:d} width with {2:d} bytes per pixel", fileName, width, pixelSize);
+        errorCode = 99;
+        return;
     }
 
     // PDF masks use 0 = draw current color, 1 = leave unchanged.
@@ -559,13 +583,15 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
             setFilename("jb2g");
             if (!(f = fopen(fileName, "wb"))) {
                 error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
+                errorCode = 2;
                 return;
             }
-            globalsStr->reset();
-            while ((c = globalsStr->getChar()) != EOF) {
-                fputc(c, f);
+            if (globalsStr->reset()) {
+                while ((c = globalsStr->getChar()) != EOF) {
+                    fputc(c, f);
+                }
+                globalsStr->close();
             }
-            globalsStr->close();
             fclose(f);
         }
 
@@ -579,6 +605,7 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
         setFilename("params");
         if (!(f = fopen(fileName, "wb"))) {
             error(errIO, -1, "Couldn't open image file '{0:s}'", fileName);
+            errorCode = 2;
             return;
         }
         if (ccittStr->getEncoding() < 0) {
@@ -682,6 +709,10 @@ void ImageOutputDev::writeImage(GfxState *state, Object *ref, Stream *str, int w
 
     if (inlineImg) {
         embedStr->restore();
+    }
+
+    if (printFilenames) {
+        printf("%s\n", fileName);
     }
 }
 

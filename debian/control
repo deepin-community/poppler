@@ -4,45 +4,51 @@ Priority: optional
 Maintainer: Debian freedesktop.org maintainers <pkg-freedesktop-maintainers@lists.alioth.debian.org>
 Uploaders: Loic Minier <lool@dooz.org>,
            Pino Toscano <pino@debian.org>,
-           Emilio Pozuelo Monfort <pochu@debian.org>,
+           Emilio Pozuelo Monfort <pochu@debian.org>
 Build-Depends: debhelper-compat (= 13),
                dh-sequence-gir,
+               dpkg-dev (>= 1.22.5),
                cmake,
-               libboost-dev (>= 1.58.0),
-               libglib2.0-dev (>= 2.56),
-               libfontconfig1-dev,
-               libcairo2-dev (>= 1.10.0),
+               gir1.2-cairo-1.0-dev,
+               gir1.2-gio-2.0-dev,
+               gir1.2-gobject-2.0-dev,
+               gtk-doc-tools (>= 1.14),
+               libboost-dev (>= 1.71.0),
+               libcairo2-dev (>= 1.16.0),
+               libcurl4-gnutls-dev,
+               libfontconfig-dev,
+               libfreetype-dev,
                libgdk-pixbuf-2.0-dev,
+               libgirepository1.0-dev (>= 1.64.0),
+               libglib2.0-dev (>= 2.64),
+               libgpgme-dev,
+               libgpgmepp-dev (>= 1.19.0),
                libgtk-3-dev,
-               libopenjp2-7-dev,
                libjpeg-dev,
+               liblcms2-dev,
+               libnss3-dev,
+               libopenjp2-7-dev,
                libpng-dev,
                libtiff-dev,
-               liblcms2-dev,
-               libfreetype6-dev,
-               gtk-doc-tools (>= 1.14),
-               pkg-config (>= 0.18),
+               pkgconf,
                python3:any,
-               libgirepository1.0-dev (>= 1.42.0-2~),
+               qt6-base-dev [amd64 arm64 armel armhf loong64 mips64el ppc64el riscv64 s390x alpha hppa hurd-any m68k powerpc ppc64 sh4 sparc64],
                qtbase5-dev,
-               qt6-base-dev,
-               zlib1g-dev,
-               libnss3-dev,
-Build-Depends-Indep: libglib2.0-doc,
-                     libcairo2-doc
-Standards-Version: 4.6.1
+               zlib1g-dev
+Build-Depends-Indep: libcairo2-doc, libglib2.0-doc
+Standards-Version: 4.7.0
 Rules-Requires-Root: no
 Homepage: https://poppler.freedesktop.org/
 Vcs-Git: https://salsa.debian.org/freedesktop-team/poppler.git
 Vcs-Browser: https://salsa.debian.org/freedesktop-team/poppler
 
-Package: libpoppler126
+Package: libpoppler147
 Architecture: any
 Section: libs
 Multi-Arch: same
-Depends: ${shlibs:Depends},
-         ${misc:Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
 Recommends: poppler-data
+Suggests: gpgsm (>= 2.2.42)
 Description: PDF rendering library
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -52,8 +58,7 @@ Package: libpoppler-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Depends: libpoppler126 (= ${binary:Version}),
-         ${shlibs:Depends},
+Depends: libpoppler147 (= ${binary:Version}),
          ${misc:Depends}
 Description: PDF rendering library -- development files
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
@@ -65,9 +70,8 @@ Package: libpoppler-private-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Depends: libpoppler-dev (= ${binary:Version}),
-         ${misc:Depends}
-Suggests: libfreetype6-dev,
+Depends: libpoppler-dev (= ${binary:Version}), ${misc:Depends}
+Suggests: libfreetype-dev
 Description: PDF rendering library -- private development files
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -78,9 +82,9 @@ Package: libpoppler-glib8
 Architecture: any
 Section: libs
 Multi-Arch: same
-Depends: libpoppler126 (= ${binary:Version}),
-         ${shlibs:Depends},
-         ${misc:Depends}
+Depends: libpoppler147 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: PDF rendering library (GLib-based shared library)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -90,13 +94,13 @@ Description: PDF rendering library (GLib-based shared library)
 Package: libpoppler-glib-dev
 Architecture: any
 Section: libdevel
-Depends: libpoppler-glib8 (= ${binary:Version}),
+Depends: libcairo2-dev (>= 1.16.0),
+         libglib2.0-dev (>= 2.64),
          libpoppler-dev (= ${binary:Version}),
-         gir1.2-poppler-0.18 (= ${binary:Version}),
-         libglib2.0-dev (>= 2.41),
-         libcairo2-dev (>= 1.10.0),
-         ${shlibs:Depends},
+         libpoppler-glib8 (= ${binary:Version}),
+         ${gir:Depends},
          ${misc:Depends}
+Provides: ${gir:Provides}
 Suggests: libpoppler-glib-doc
 Description: PDF rendering library -- development files (GLib interface)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
@@ -108,8 +112,7 @@ Package: libpoppler-glib-doc
 Architecture: all
 Section: doc
 Depends: ${misc:Depends}
-Recommends: libglib2.0-doc,
-            libcairo2-doc,
+Recommends: libcairo2-doc, libglib2.0-doc
 Multi-Arch: foreign
 Description: PDF rendering library -- documentation for the GLib interface
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
@@ -121,9 +124,7 @@ Package: gir1.2-poppler-0.18
 Architecture: any
 Section: introspection
 Multi-Arch: same
-Depends: ${shlibs:Depends},
-         ${misc:Depends},
-         ${gir:Depends}
+Depends: ${gir:Depends}, ${misc:Depends}
 Description: GObject introspection data for poppler-glib
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -136,9 +137,9 @@ Package: libpoppler-qt5-1
 Architecture: any
 Section: libs
 Multi-Arch: same
-Depends: libpoppler126 (= ${binary:Version}),
-         ${shlibs:Depends},
-         ${misc:Depends}
+Depends: libpoppler147 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: PDF rendering library (Qt 5 based shared library)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -149,10 +150,9 @@ Package: libpoppler-qt5-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Depends: libpoppler-qt5-1 (= ${binary:Version}),
-         libpoppler-dev (= ${binary:Version}),
+Depends: libpoppler-dev (= ${binary:Version}),
+         libpoppler-qt5-1 (= ${binary:Version}),
          qtbase5-dev,
-         ${shlibs:Depends},
          ${misc:Depends}
 Description: PDF rendering library -- development files (Qt 5 interface)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
@@ -161,12 +161,12 @@ Description: PDF rendering library -- development files (Qt 5 interface)
  build applications using the Qt 5-based Poppler interface.
 
 Package: libpoppler-qt6-3
-Architecture: any
+Architecture: hurd-any alpha amd64 arm64 armel armhf hppa loong64 m68k mips64el powerpc ppc64 ppc64el riscv64 s390x sh4 sparc64
 Section: libs
 Multi-Arch: same
-Depends: libpoppler126 (= ${binary:Version}),
-         ${shlibs:Depends},
-         ${misc:Depends}
+Depends: libpoppler147 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: PDF rendering library (Qt 6 based shared library)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -174,13 +174,12 @@ Description: PDF rendering library (Qt 6 based shared library)
  using the Qt 6 interface to Poppler.
 
 Package: libpoppler-qt6-dev
-Architecture: any
+Architecture: hurd-any alpha amd64 arm64 armel armhf hppa loong64 m68k mips64el powerpc ppc64 ppc64el riscv64 s390x sh4 sparc64
 Section: libdevel
 Multi-Arch: same
-Depends: libpoppler-qt6-3 (= ${binary:Version}),
-         libpoppler-dev (= ${binary:Version}),
+Depends: libpoppler-dev (= ${binary:Version}),
+         libpoppler-qt6-3 (= ${binary:Version}),
          qt6-base-dev,
-         ${shlibs:Depends},
          ${misc:Depends}
 Description: PDF rendering library -- development files (Qt 6 interface)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
@@ -188,15 +187,13 @@ Description: PDF rendering library -- development files (Qt 6 interface)
  This package contains the headers and development libraries needed to
  build applications using the Qt 6-based Poppler interface.
 
-Package: libpoppler-cpp0v5
+Package: libpoppler-cpp2
 Architecture: any
 Section: libs
 Multi-Arch: same
-Depends: libpoppler126 (= ${binary:Version}),
-         ${shlibs:Depends},
-         ${misc:Depends}
-Conflicts: libpoppler-cpp0
-Replaces: libpoppler-cpp0
+Depends: libpoppler147 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: PDF rendering library (CPP shared library)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .
@@ -207,9 +204,8 @@ Package: libpoppler-cpp-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Depends: libpoppler-cpp0v5 (= ${binary:Version}),
+Depends: libpoppler-cpp2 (= ${binary:Version}),
          libpoppler-dev (= ${binary:Version}),
-         ${shlibs:Depends},
          ${misc:Depends}
 Description: PDF rendering library -- development files (CPP interface)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
@@ -221,16 +217,13 @@ Package: poppler-utils
 Architecture: any
 Section: utils
 Multi-Arch: foreign
-Depends: libpoppler126 (= ${binary:Version}),
-         ${shlibs:Depends},
-         ${misc:Depends}
+Depends: libpoppler147 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Breaks: xpdf-utils (<< 3.02-2~)
 Conflicts: pdftohtml
-Replaces: xpdf-utils (<< 3.02-2~),
-          pdftohtml,
-          xpdf-reader
-Provides: xpdf-utils,
-          pdftohtml
+Replaces: pdftohtml, xpdf-reader, xpdf-utils (<< 3.02-2~)
+Provides: pdftohtml, xpdf-utils
 Description: PDF utilities (based on Poppler)
  Poppler is a PDF rendering library based on Xpdf PDF viewer.
  .

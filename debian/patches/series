@@ -1,5 +1,5 @@
-0001-OutlineItem-open-Fix-crash-on-malformed-files.patch
-0002-JBIG2Bitmap-combine-Fix-crash-on-malformed-files.patch
-0003-PSStack-roll-Protect-against-doing-int-INT_MIN.patch
-0004-Move-isOk-check-to-inside-JBIG2Bitmap-combine.patch
-CVE-2024-6239.patch
+CVE-2025-32364.patch
+CVE-2025-32365.patch
+CVE-2025-43903.patch
+CVE-2025-52886.patch
+CVE-2025-50420.patch
