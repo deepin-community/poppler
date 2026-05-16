@@ -1,3 +1,10 @@
+poppler (22.12.0-2+deb12u1deepin3) UNRELEASED; urgency=medium
+
+  * Fix CVE-2025-43903: properly verify adbe.pkcs7.sha1 signatures
+    instead of only comparing digests, preventing signature forgeries
+
+ -- deepin-ci-robot <packages@deepin.org>  Sun, 17 May 2026 04:00:05 +0800
+
 poppler (22.12.0-2+deb12u1deepin2) unstable; urgency=medium
 
   * Fix CVE-2025-43718: limit regex match length in
