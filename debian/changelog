@@ -1,3 +1,11 @@
+poppler (22.12.0-2+deb12u1deepin2) unstable; urgency=medium
+
+  * Fix CVE-2025-43718: limit regex match length in
+    pdfConformanceFromString to prevent stack consumption (SIGSEGV) via
+    deeply nested PDF metadata
+
+ -- deepin-ci-robot <packages@deepin.org>  Sun, 17 May 2026 03:59:41 +0800
+
 poppler (22.12.0-2+deb12u1deepin1) unstable; urgency=medium
 
   * fix CVE-2024-6239 

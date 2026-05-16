@@ -3,3 +3,8 @@
 0003-PSStack-roll-Protect-against-doing-int-INT_MIN.patch
 0004-Move-isOk-check-to-inside-JBIG2Bitmap-combine.patch
 CVE-2024-6239.patch
+CVE-2025-43718.patch
+CVE-2025-43903.patch
+CVE-2025-50420.patch
+CVE-2025-52885.patch
+CVE-2025-52886.patch
