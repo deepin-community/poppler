@@ -1,3 +1,10 @@
+poppler (22.12.0-2+deb12u1deepin4) unstable; urgency=medium
+
+  * Fix CVE-2026-10118: Integer overflow in splash backend
+    tilingPatternFill
+
+ -- lichenggang <lichenggang@deepin.org>  Wed, 10 Jun 2026 15:46:25 +0800
+
 poppler (22.12.0-2+deb12u1deepin3) unstable; urgency=medium
 
   * Fix CVE-2025-43903: properly verify adbe.pkcs7.sha1 signatures
