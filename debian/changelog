@@ -1,37 +1,13 @@
-poppler (22.12.0-2+deb12u1deepin4) unstable; urgency=medium
+poppler (22.12.0-2+deb12u2) bookworm-security; urgency=high
 
-  * Fix CVE-2026-10118: Integer overflow in splash backend
-    tilingPatternFill
+  * Non-maintainer upload by the Security Team.
+  * Make sure regex doesn't stack overflow by limiting it (CVE-2025-43718)
+    (Closes: #1117046)
+  * Check for duplicate entries (CVE-2025-52885) (Closes: #1117853)
+  * SplashOutputDev: Fix integer overflow in tilingPatternFill (CVE-2026-10118)
+    (Closes: #1138708)
 
- -- lichenggang <lichenggang@deepin.org>  Wed, 10 Jun 2026 15:46:25 +0800
-
-poppler (22.12.0-2+deb12u1deepin3) unstable; urgency=medium
-
-  * Fix CVE-2025-43903: properly verify adbe.pkcs7.sha1 signatures
-    instead of only comparing digests, preventing signature forgeries
-  * Fix CVE-2025-50420: skip entries without Type or SubType in
-    markAnnotations to prevent infinite recursion via crafted PDF (DoS)
-  * Fix CVE-2025-52885: add duplicate entry check in
-    StructTreeRoot::parseNumberTreeNode to prevent use-after-free via
-    dangling pointers
-  * Fix CVE-2025-52886: add annotation count limits to prevent reference
-    count integer overflow (use-after-free)
-
- -- deepin-ci-robot <packages@deepin.org>  Sun, 17 May 2026 04:00:05 +0800
-
-poppler (22.12.0-2+deb12u1deepin2) unstable; urgency=medium
-
-  * Fix CVE-2025-43718: limit regex match length in
-    pdfConformanceFromString to prevent stack consumption (SIGSEGV) via
-    deeply nested PDF metadata
-
- -- deepin-ci-robot <packages@deepin.org>  Sun, 17 May 2026 03:59:41 +0800
-
-poppler (22.12.0-2+deb12u1deepin1) unstable; urgency=medium
-
-  * fix CVE-2024-6239 
-
- -- zengwei <zengwei1@uniontech.com>  Thu, 29 Jan 2026 13:43:35 +0800
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 06 Jun 2026 15:00:14 +0200
 
 poppler (22.12.0-2+deb12u1) bookworm; urgency=medium
 

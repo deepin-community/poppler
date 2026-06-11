@@ -1,0 +1,24 @@
+From: Albert Astals Cid <aacid@kde.org>
+Date: Wed, 26 Mar 2025 11:26:32 +0100
+Subject: Make sure regex doesn't stack overflow by limiting it
+Origin: https://gitlab.freedesktop.org/poppler/poppler/-/commit/f54b815672117c250420787c8c006de98e8c7408
+Bug-Debian: https://bugs.debian.org/1117046
+Bug-Debian-Security: https://security-tracker.debian.org/tracker/CVE-2025-43718
+
+Happens with very long pdfsubver strings when compiled with
+-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -flto=auto
+---
+ poppler/PDFDoc.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+--- a/poppler/PDFDoc.cc
++++ b/poppler/PDFDoc.cc
+@@ -480,7 +480,7 @@ static PDFSubtypePart pdfPartFromString(
+ 
+ static PDFSubtypeConformance pdfConformanceFromString(const std::string &pdfsubver)
+ {
+-    const std::regex regex("PDF/(?:A|X|VT|E|UA)-[[:digit:]]([[:alpha:]]+)");
++    const std::regex regex("PDF/(?:A|X|VT|E|UA)-[[:digit:]]([[:alpha:]]{1,3})");
+     std::smatch match;
+     PDFSubtypeConformance pdfConf = subtypeConfNone;
+ 
