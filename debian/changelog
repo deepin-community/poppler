@@ -1,3 +1,9 @@
+poppler (22.12.0-2+deb12u1deepin5) unstable; urgency=medium
+
+  * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
+
+ -- tunaichao <tunaichao@uniontech.com>  Thu, 10 Sep 2026 20:06:47 +0800
+
 poppler (22.12.0-2+deb12u1deepin4) unstable; urgency=medium
 
   * Fix CVE-2026-10118: Integer overflow in splash backend
