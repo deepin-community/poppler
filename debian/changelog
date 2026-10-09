@@ -15,6 +15,10 @@ poppler (22.12.0-2+deb12u1deepin6) unstable; urgency=medium
     password length limit   Upstream:
     https://gitlab.freedesktop.org/poppler/poppler/-
     /merge_requests/2398.patch
+  * fix(cve): CVE-2026-102621 (unknown) - Fix integer overflow in
+    SplashClip::clipToPath   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /commit/323c91036d99926a8b90dc14329f7b40aece22f8
 
  -- deepin-ci-robot <packages@deepin.org>  Thu, 08 Oct 2026 16:52:09 +0800
 
