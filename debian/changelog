@@ -1,3 +1,31 @@
+poppler (22.12.0-2+deb12u1deepin6) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-93314 (medium) - [PATCH]
+    FoFiTrueType::mapCodeToGID: Improve b*12 overflow check   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /commit/ed2a5538cf0a8d3ff908191eda9b73f91a5f952a
+  * fix(cve): CVE-2026-93313 (medium) - Fix integer overflow in
+    JBIG2Stream::readCodeTableSeg   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /commit/eb87cf711563894649bd0c365baa479401dc6d51
+  * fix(cve): CVE-2026-93312 (medium) - Fix nullptr + number   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /commit/5e49250f13b0390edeb3f90eb4c02c9941f97067.patch
+  * fix(cve): CVE-2026-107705 (high) - [PATCH] Decrypt: Properly apply
+    password length limit   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /merge_requests/2398.patch
+  * fix(cve): CVE-2026-102621 (unknown) - Fix integer overflow in
+    SplashClip::clipToPath   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /commit/323c91036d99926a8b90dc14329f7b40aece22f8
+  * fix(cve): CVE-2026-102620 (unknown) - [PATCH] Fix integer overflow
+    in FoFiTrueType::cvtSfnts   Upstream:
+    https://gitlab.freedesktop.org/poppler/poppler/-
+    /commit/245d3c6823377755f2c1d5fdddd010279c6ed94d
+
+ -- deepin-ci-robot <packages@deepin.org>  Thu, 08 Oct 2026 16:52:09 +0800
+
 poppler (22.12.0-2+deb12u1deepin5) unstable; urgency=medium
 
   * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
