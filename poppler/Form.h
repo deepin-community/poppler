@@ -6,7 +6,7 @@
 //
 // Copyright 2006 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright 2007, 2008, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright 2007-2010, 2012, 2015-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2007-2010, 2012, 2015-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2010 Mark Riedesel <mark@klowner.com>
 // Copyright 2011 Pino Toscano <pino@kde.org>
 // Copyright 2012 Fabio D'Urso <fabiodurso@hotmail.it>
@@ -27,6 +27,8 @@
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
 // Copyright 2022 Alexander Sulfrian <asulfrian@zedat.fu-berlin.de>
+// Copyright 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2024 Pratham Gandhi <ppg.1382@gmail.com>
 //
 //========================================================================
 
@@ -35,14 +37,17 @@
 
 #include "Annot.h"
 #include "CharTypes.h"
+#include "CryptoSignBackend.h"
 #include "Object.h"
 #include "poppler_private_export.h"
+#include "SignatureInfo.h"
 
 #include <ctime>
 
 #include <optional>
 #include <set>
 #include <vector>
+#include <functional>
 
 class GooString;
 class Array;
@@ -53,9 +58,10 @@ class Annots;
 class LinkAction;
 class GfxResources;
 class PDFDoc;
-class SignatureInfo;
 class X509CertificateInfo;
-class SignatureHandler;
+namespace CryptoSign {
+class VerificationInterface;
+}
 
 enum FormFieldType
 {
@@ -71,15 +77,6 @@ enum FormButtonType
     formButtonCheck,
     formButtonPush,
     formButtonRadio
-};
-
-enum FormSignatureType
-{
-    adbe_pkcs7_sha1,
-    adbe_pkcs7_detached,
-    ETSI_CAdES_detached,
-    unknown_signature_type,
-    unsigned_signature_field
 };
 
 enum FillValueType
@@ -128,7 +125,7 @@ public:
     void setPartialName(const GooString &name);
     const GooString *getAlternateUiName() const;
     const GooString *getMappingName() const;
-    GooString *getFullyQualifiedName();
+    const GooString *getFullyQualifiedName();
 
     bool isModified() const;
 
@@ -137,7 +134,7 @@ public:
 
     LinkAction *getActivationAction(); // The caller should not delete the result
     std::unique_ptr<LinkAction> getAdditionalAction(Annot::FormAdditionalActionsType type);
-    bool setAdditionalAction(Annot::FormAdditionalActionsType t, const GooString &js);
+    bool setAdditionalAction(Annot::FormAdditionalActionsType t, const std::string &js);
 
     // return the unique ID corresponding to pageNum/fieldNum
     static int encodeID(unsigned pageNum, unsigned fieldNum);
@@ -198,7 +195,7 @@ public:
 
 protected:
     FormFieldButton *parent() const;
-    GooString *onStr;
+    std::unique_ptr<GooString> onStr;
 };
 
 //------------------------------------------------------------------------
@@ -213,9 +210,9 @@ public:
     const GooString *getContent() const;
 
     // expects a UTF16BE string
-    void setContent(const GooString *new_content);
+    void setContent(std::unique_ptr<GooString> new_content);
     // sets the text inside the field appearance stream
-    void setAppearanceContent(const GooString *new_content);
+    void setAppearanceContent(std::unique_ptr<GooString> new_content);
 
     void updateWidgetAppearance() override;
 
@@ -252,7 +249,7 @@ public:
     const GooString *getExportVal(int i) const;
     // select the i-th choice
     void select(int i);
-
+    void setAppearanceChoiceContent(std::unique_ptr<GooString> new_content);
     // toggle selection of the i-th choice
     void toggle(int i);
 
@@ -261,7 +258,7 @@ public:
 
     // except a UTF16BE string
     // only work for editable combo box, set the user-entered text as the current choice
-    void setEditChoice(const GooString *new_content);
+    void setEditChoice(std::unique_ptr<GooString> new_content);
 
     const GooString *getEditChoice() const;
 
@@ -290,11 +287,24 @@ public:
     FormWidgetSignature(PDFDoc *docA, Object *dictObj, unsigned num, Ref ref, FormField *p);
     void updateWidgetAppearance() override;
 
-    FormSignatureType signatureType() const;
-    void setSignatureType(FormSignatureType fst);
+    CryptoSign::SignatureType signatureType() const;
+    void setSignatureType(CryptoSign::SignatureType fst);
 
     // Use -1 for now as validationTime
-    SignatureInfo *validateSignature(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA);
+    // ocspRevocation and aiafetch might happen async in the Background
+    // doneCallback will be invoked once there is a result
+    // Note: Validation callback will likely happen from an auxillary
+    // thread and it is the caller of this method who is responsible
+    // for moving back to the main thread
+    // For synchronous code, don't provide validation callback
+    // and just call validateSignatureResult afterwards
+    // The returned SignatureInfo from this method does
+    // not have validated the certificate.
+    SignatureInfo *validateSignatureAsync(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA, const std::function<void()> &doneCallback);
+
+    /// Waits, if needed, on validation callback and
+    /// returns a signatureinfo with validated certificates
+    CertificateValidationStatus validateSignatureResult();
 
     // returns a list with the boundaries of the signed ranges
     // the elements of the list are of type Goffset
@@ -307,27 +317,28 @@ public:
     // field "ByteRange" in the dictionary "V".
     // Arguments reason and location are UTF-16 big endian strings with BOM. An empty string and nullptr are acceptable too.
     // Returns success.
-    bool signDocument(const char *filename, const char *certNickname, const char *digestName, const char *password, const GooString *reason = nullptr, const GooString *location = nullptr, const std::optional<GooString> &ownerPassword = {},
-                      const std::optional<GooString> &userPassword = {});
+    std::optional<CryptoSign::SigningError> signDocument(const std::string &filename, const std::string &certNickname, const std::string &password, const GooString *reason = nullptr, const GooString *location = nullptr,
+                                                         const std::optional<GooString> &ownerPassword = {}, const std::optional<GooString> &userPassword = {});
 
     // Same as above but adds text, font color, etc.
-    bool signDocumentWithAppearance(const char *filename, const char *certNickname, const char *digestName, const char *password, const GooString *reason = nullptr, const GooString *location = nullptr,
-                                    const std::optional<GooString> &ownerPassword = {}, const std::optional<GooString> &userPassword = {}, const GooString &signatureText = {}, const GooString &signatureTextLeft = {}, double fontSize = {},
-                                    double leftFontSize = {}, std::unique_ptr<AnnotColor> &&fontColor = {}, double borderWidth = {}, std::unique_ptr<AnnotColor> &&borderColor = {}, std::unique_ptr<AnnotColor> &&backgroundColor = {});
+    std::optional<CryptoSign::SigningError> signDocumentWithAppearance(const std::string &filename, const std::string &certNickname, const std::string &password, const GooString *reason = nullptr, const GooString *location = nullptr,
+                                                                       const std::optional<GooString> &ownerPassword = {}, const std::optional<GooString> &userPassword = {}, const GooString &signatureText = {},
+                                                                       const GooString &signatureTextLeft = {}, double fontSize = {}, double leftFontSize = {}, std::unique_ptr<AnnotColor> &&fontColor = {}, double borderWidth = {},
+                                                                       std::unique_ptr<AnnotColor> &&borderColor = {}, std::unique_ptr<AnnotColor> &&backgroundColor = {});
 
     // checks the length encoding of the signature and returns the hex encoded signature
     // if the check passed (and the checked file size as output parameter in checkedFileSize)
     // otherwise a nullptr is returned
     std::optional<GooString> getCheckedSignature(Goffset *checkedFileSize);
 
-    const GooString *getSignature() const;
+    const std::vector<unsigned char> &getSignature() const;
 
 private:
-    bool createSignature(Object &vObj, Ref vRef, const GooString &name, const GooString *signature, const GooString *reason = nullptr, const GooString *location = nullptr);
+    bool createSignature(Object &vObj, Ref vRef, const GooString &name, int placeholderLength, const GooString *reason, const GooString *location, CryptoSign::SignatureType signatureType);
     bool getObjectStartEnd(const GooString &filename, int objNum, Goffset *objStart, Goffset *objEnd, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword);
     bool updateOffsets(FILE *f, Goffset objStart, Goffset objEnd, Goffset *sigStart, Goffset *sigEnd, Goffset *fileSize);
 
-    bool updateSignature(FILE *f, Goffset sigStart, Goffset sigEnd, const GooString *signature);
+    bool updateSignature(FILE *f, Goffset sigStart, Goffset sigEnd, const std::vector<unsigned char> &signature);
 };
 
 //------------------------------------------------------------------------
@@ -354,23 +365,23 @@ public:
     void setStandAlone(bool value) { standAlone = value; }
     bool isStandAlone() const { return standAlone; }
 
-    GooString *getDefaultAppearance() const { return defaultAppearance; }
+    GooString *getDefaultAppearance() const { return defaultAppearance.get(); }
     void setDefaultAppearance(const std::string &appearance);
 
     bool hasTextQuadding() const { return hasQuadding; }
     VariableTextQuadding getTextQuadding() const { return quadding; }
 
-    const GooString *getPartialName() const { return partialName; }
+    const GooString *getPartialName() const { return partialName.get(); }
     void setPartialName(const GooString &name);
-    const GooString *getAlternateUiName() const { return alternateUiName; }
-    const GooString *getMappingName() const { return mappingName; }
-    GooString *getFullyQualifiedName();
+    const GooString *getAlternateUiName() const { return alternateUiName.get(); }
+    const GooString *getMappingName() const { return mappingName.get(); }
+    const GooString *getFullyQualifiedName() const;
 
     FormWidget *findWidgetByRef(Ref aref);
-    int getNumWidgets() const { return terminal ? numChildren : 0; }
-    FormWidget *getWidget(int i) const { return terminal ? widgets[i] : nullptr; }
-    int getNumChildren() const { return !terminal ? numChildren : 0; }
-    FormField *getChildren(int i) const { return children[i]; }
+    int getNumWidgets() const { return terminal ? widgets.size() : 0; }
+    FormWidget *getWidget(int i) const { return terminal ? widgets[i].get() : nullptr; }
+    int getNumChildren() const { return !terminal ? children.size() : 0; }
+    FormField *getChildren(int i) const { return !terminal ? children[i].get() : nullptr; }
 
     // only implemented in FormFieldButton
     virtual void fillChildrenSiblingsID();
@@ -384,6 +395,8 @@ public:
     FormField *findFieldByRef(Ref aref);
     FormField *findFieldByFullyQualifiedName(const std::string &name);
 
+    bool getNoExport() const { return noExport; }
+
 protected:
     void _createWidget(Object *obj, Ref aref);
     void createChildren(std::set<int> *usedParents);
@@ -396,19 +409,19 @@ protected:
     Object obj;
     PDFDoc *doc;
     XRef *xref;
-    FormField **children;
+    std::vector<std::unique_ptr<FormField>> children;
     FormField *parent;
-    int numChildren;
-    FormWidget **widgets;
+    std::vector<std::unique_ptr<FormWidget>> widgets;
     bool readOnly;
+    bool noExport;
 
-    GooString *partialName; // T field
-    GooString *alternateUiName; // TU field
-    GooString *mappingName; // TM field
-    GooString *fullyQualifiedName;
+    std::unique_ptr<GooString> partialName; // T field
+    std::unique_ptr<GooString> alternateUiName; // TU field
+    std::unique_ptr<GooString> mappingName; // TM field
+    mutable std::unique_ptr<GooString> fullyQualifiedName;
 
     // Variable Text
-    GooString *defaultAppearance;
+    std::unique_ptr<GooString> defaultAppearance;
     bool hasQuadding;
     VariableTextQuadding quadding;
 
@@ -416,7 +429,7 @@ protected:
     bool standAlone;
 
 private:
-    FormField() { }
+    FormField() = default;
 };
 
 //------------------------------------------------------------------------
@@ -446,7 +459,7 @@ public:
 
     // For radio buttons, return the fields of the other radio buttons in the same group
     FormFieldButton *getSibling(int i) const { return siblings[i]; }
-    int getNumSiblings() const { return numSiblings; }
+    int getNumSiblings() const { return int(siblings.size()); }
 
     void print(int indent) override;
     void reset(const std::vector<std::string> &excludedFields) override;
@@ -456,10 +469,8 @@ public:
 protected:
     void updateState(const char *state);
 
-    FormFieldButton **siblings; // IDs of dependent buttons (each button of a radio field has all the others buttons
-                                // of the same field in this array)
-    int numSiblings;
-
+    std::vector<FormFieldButton *> siblings; // IDs of dependent buttons (each button of a radio field has all the others buttons
+                                             // of the same field in this array)
     FormButtonType btype;
     int size;
     int active_child; // only used for combo box
@@ -477,10 +488,10 @@ class FormFieldText : public FormField
 public:
     FormFieldText(PDFDoc *docA, Object &&dictObj, const Ref ref, FormField *parent, std::set<int> *usedParents);
 
-    const GooString *getContent() const { return content; }
-    const GooString *getAppearanceContent() const { return internalContent ? internalContent : content; }
-    void setContentCopy(const GooString *new_content);
-    void setAppearanceContentCopy(const GooString *new_content);
+    const GooString *getContent() const { return content.get(); }
+    const GooString *getAppearanceContent() const { return internalContent ? internalContent.get() : content.get(); }
+    void setContent(std::unique_ptr<GooString> new_content);
+    void setAppearanceContent(std::unique_ptr<GooString> new_content);
     ~FormFieldText() override;
 
     bool isMultiline() const { return multiline; }
@@ -507,9 +518,9 @@ protected:
     int parseDA(std::vector<std::string> *daToks);
     void fillContent(FillValueType fillType);
 
-    GooString *content;
-    GooString *internalContent;
-    GooString *defaultContent;
+    std::unique_ptr<GooString> content;
+    std::unique_ptr<GooString> internalContent;
+    std::unique_ptr<GooString> defaultContent;
     bool multiline;
     bool password;
     bool fileSelect;
@@ -532,10 +543,13 @@ public:
     ~FormFieldChoice() override;
 
     int getNumChoices() const { return numChoices; }
-    const GooString *getChoice(int i) const { return choices ? choices[i].optionName : nullptr; }
-    const GooString *getExportVal(int i) const { return choices ? choices[i].exportVal : nullptr; }
+    const GooString *getChoice(int i) const { return choices ? choices[i].optionName.get() : nullptr; }
+    const GooString *getExportVal(int i) const { return choices ? choices[i].exportVal.get() : nullptr; }
     // For multi-select choices it returns the first one
     const GooString *getSelectedChoice() const;
+    const GooString *getAppearanceSelectedChoice() const { return appearanceSelectedChoice ? appearanceSelectedChoice.get() : getSelectedChoice(); }
+
+    void setAppearanceChoiceContent(std::unique_ptr<GooString> new_content);
 
     // select the i-th choice
     void select(int i);
@@ -547,7 +561,7 @@ public:
     void deselectAll();
 
     // only work for editable combo box, set the user-entered text as the current choice
-    void setEditChoice(const GooString *new_content);
+    void setEditChoice(std::unique_ptr<GooString> new_content);
 
     const GooString *getEditChoice() const;
 
@@ -580,15 +594,16 @@ protected:
 
     struct ChoiceOpt
     {
-        GooString *exportVal; // the export value ("internal" name)
-        GooString *optionName; // displayed name
-        bool selected; // if this choice is selected
+        std::unique_ptr<GooString> exportVal; // the export value ("internal" name)
+        std::unique_ptr<GooString> optionName; // displayed name
+        bool selected = false; // if this choice is selected
     };
 
     int numChoices;
     ChoiceOpt *choices;
     bool *defaultChoices;
-    GooString *editedChoice;
+    std::unique_ptr<GooString> editedChoice;
+    std::unique_ptr<GooString> appearanceSelectedChoice;
     int topIdx; // TI
 };
 
@@ -602,7 +617,9 @@ public:
     FormFieldSignature(PDFDoc *docA, Object &&dict, const Ref ref, FormField *parent, std::set<int> *usedParents);
 
     // Use -1 for now as validationTime
-    SignatureInfo *validateSignature(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA);
+    SignatureInfo *validateSignatureAsync(bool doVerifyCert, bool forceRevalidation, time_t validationTime, bool ocspRevocationCheck, bool enableAIA, const std::function<void()> &doneCallback);
+
+    CertificateValidationStatus validateSignatureResult();
 
     // returns a list with the boundaries of the signed ranges
     // the elements of the list are of type Goffset
@@ -615,10 +632,10 @@ public:
 
     ~FormFieldSignature() override;
     Object *getByteRange() { return &byte_range; }
-    const GooString *getSignature() const { return signature; }
-    void setSignature(const GooString &sig);
-    FormSignatureType getSignatureType() const { return signature_type; }
-    void setSignatureType(FormSignatureType t) { signature_type = t; }
+    const std::vector<unsigned char> &getSignature() const { return signature; }
+    void setSignature(std::vector<unsigned char> &&sig);
+    CryptoSign::SignatureType getSignatureType() const { return signature_type; }
+    void setSignatureType(CryptoSign::SignatureType t) { signature_type = t; }
 
     const GooString &getCustomAppearanceContent() const;
     void setCustomAppearanceContent(const GooString &s);
@@ -639,17 +656,18 @@ public:
 
 private:
     void parseInfo();
-    void hashSignedDataBlock(SignatureHandler *handler, Goffset block_len);
+    void hashSignedDataBlock(CryptoSign::VerificationInterface *handler, Goffset block_len);
 
-    FormSignatureType signature_type;
+    CryptoSign::SignatureType signature_type;
     Object byte_range;
-    GooString *signature;
+    std::vector<unsigned char> signature;
     SignatureInfo *signature_info;
     GooString customAppearanceContent;
     GooString customAppearanceLeftContent;
     double customAppearanceLeftFontSize = 20;
     Ref imageResource = Ref::INVALID();
     std::unique_ptr<X509CertificateInfo> certificate_info;
+    std::unique_ptr<CryptoSign::VerificationInterface> signature_handler;
 
     void print(int indent) override;
 };
@@ -676,11 +694,15 @@ public:
     /* Creates a new Field of the type specified in obj's dict.
        used in Form::Form , FormField::FormField and
        Page::loadStandaloneFields */
-    static FormField *createFieldFromDict(Object &&obj, PDFDoc *docA, const Ref aref, FormField *parent, std::set<int> *usedParents);
+    static std::unique_ptr<FormField> createFieldFromDict(Object &&obj, PDFDoc *docA, const Ref aref, FormField *parent, std::set<int> *usedParents);
 
     // Finds in the default resources dictionary a font named popplerfontXXX that
     // has the given fontFamily and fontStyle. This makes us relatively sure that we added that font ourselves
     std::string findFontInDefaultResources(const std::string &fontFamily, const std::string &fontStyle) const;
+
+    // Finds in the default resources a font that is suitable to create a signature annotation.
+    // If none is found then it is added to the default resources.
+    std::string findPdfFontNameToUseForSigning();
 
     struct AddFontResult
     {
@@ -689,8 +711,9 @@ public:
     };
 
     // Finds in the system a font name matching the given fontFamily and fontStyle
-    // And adds it to the default resources dictionary, font name there will be popplerfontXXX
-    AddFontResult addFontToDefaultResources(const std::string &fontFamily, const std::string &fontStyle);
+    // And adds it to the default resources dictionary, font name there will be popplerfontXXX except if forceName is true,
+    // in that case the font name will be fontFamily + " " + fontStyle (if fontStyle is empty just fontFamily)
+    AddFontResult addFontToDefaultResources(const std::string &fontFamily, const std::string &fontStyle, bool forceName = false);
 
     // Finds in the default resources dictionary a font named popplerfontXXX that
     // emulates fontToEmulate and can draw the given char
@@ -703,9 +726,9 @@ public:
     std::vector<AddFontResult> ensureFontsForAllCharacters(const GooString *unicodeText, const std::string &pdfFontNameToEmulate, GfxResources *fieldResources = nullptr);
 
     bool getNeedAppearances() const { return needAppearances; }
-    int getNumFields() const { return numFields; }
-    FormField *getRootField(int i) const { return rootFields[i]; }
-    const GooString *getDefaultAppearance() const { return defaultAppearance; }
+    int getNumFields() const { return rootFields.size(); }
+    FormField *getRootField(int i) const { return rootFields[i].get(); }
+    const GooString *getDefaultAppearance() const { return defaultAppearance.get(); }
     VariableTextQuadding getTextQuadding() const { return quadding; }
     GfxResources *getDefaultResources() const { return defaultResources; }
     Object *getDefaultResourcesObj() { return &resDict; }
@@ -713,6 +736,7 @@ public:
     FormWidget *findWidgetByRef(Ref aref);
     FormField *findFieldByRef(Ref aref) const;
     FormField *findFieldByFullyQualifiedName(const std::string &name) const;
+    FormField *findFieldByFullyQualifiedNameOrRef(const std::string &field) const;
 
     void postWidgetsLoad();
 
@@ -722,14 +746,13 @@ public:
 
 private:
     // Finds in the system a font name matching the given fontFamily and fontStyle
-    // And adds it to the default resources dictionary, font name there will be popplerfontXXX
-    AddFontResult addFontToDefaultResources(const std::string &filepath, int faceIndex, const std::string &fontFamily, const std::string &fontStyle);
+    // And adds it to the default resources dictionary, font name there will be popplerfontXXX except if forceName is true,
+    // in that case the font name will be fontFamily + " " + fontStyle (if fontStyle is empty just fontFamily)
+    AddFontResult addFontToDefaultResources(const std::string &filepath, int faceIndex, const std::string &fontFamily, const std::string &fontStyle, bool forceName = false);
 
     AddFontResult doGetAddFontToDefaultResources(Unicode uChar, const GfxFont &fontToEmulate);
 
-    FormField **rootFields;
-    int numFields;
-    int size;
+    std::vector<std::unique_ptr<FormField>> rootFields;
     PDFDoc *const doc;
     bool needAppearances;
     GfxResources *defaultResources;
@@ -737,7 +760,7 @@ private:
     std::vector<Ref> calculateOrder;
 
     // Variable Text
-    GooString *defaultAppearance;
+    std::unique_ptr<GooString> defaultAppearance;
     VariableTextQuadding quadding;
 };
 
@@ -754,14 +777,12 @@ public:
     FormPageWidgets(const FormPageWidgets &) = delete;
     FormPageWidgets &operator=(const FormPageWidgets &) = delete;
 
-    int getNumWidgets() const { return numWidgets; }
+    int getNumWidgets() const { return widgets.size(); }
     FormWidget *getWidget(int i) const { return widgets[i]; }
-    void addWidgets(const std::vector<FormField *> &addedWidgets, unsigned int page);
+    void addWidgets(const std::vector<std::unique_ptr<FormField>> &addedWidgets, unsigned int page);
 
 private:
-    FormWidget **widgets;
-    int numWidgets;
-    int size;
+    std::vector<FormWidget *> widgets;
 };
 
 #endif

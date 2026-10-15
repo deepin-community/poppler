@@ -6,8 +6,9 @@
 //
 // Copyright 2013 Igalia S.L.
 // Copyright 2018-2020, 2022 Albert Astals Cid <aacid@kde.org>
-// Copyright 2021 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -26,19 +27,16 @@ MarkedContentOutputDev::MarkedContentOutputDev(int mcidA, const Object &stmObj) 
     currentColor.r = currentColor.g = currentColor.b = 0;
 }
 
-MarkedContentOutputDev::~MarkedContentOutputDev()
-{
-    delete currentText;
-}
+MarkedContentOutputDev::~MarkedContentOutputDev() = default;
 
 void MarkedContentOutputDev::endSpan()
 {
     if (currentText && currentText->getLength()) {
         // The TextSpan takes ownership of currentText and
         // increases the reference count for currentFont.
-        textSpans.push_back(TextSpan(currentText, currentFont, currentColor));
+        textSpans.push_back(TextSpan(std::move(currentText), currentFont, currentColor));
     }
-    currentText = nullptr;
+    currentText.reset();
 }
 
 void MarkedContentOutputDev::startPage(int pageNum, GfxState *state, XRef *xref)
@@ -56,12 +54,12 @@ void MarkedContentOutputDev::endPage()
     pageWidth = pageHeight = 0.0;
 }
 
-void MarkedContentOutputDev::beginForm(Ref id)
+void MarkedContentOutputDev::beginForm(Object * /* obj */, Ref id)
 {
     formStack.push_back(id);
 }
 
-void MarkedContentOutputDev::endForm(Ref id)
+void MarkedContentOutputDev::endForm(Object * /* obj */, Ref id)
 {
     formStack.pop_back();
 }
@@ -200,7 +198,7 @@ void MarkedContentOutputDev::drawChar(GfxState *state, double xx, double yy, dou
             int n = unicodeMap->mapUnicode(u[i], buf, sizeof(buf));
             if (n > 0) {
                 if (currentText == nullptr) {
-                    currentText = new GooString();
+                    currentText = std::make_unique<GooString>();
                 }
                 currentText->append(buf, n);
             }

@@ -1,7 +1,8 @@
 /* poppler-structure.cc: glib interface to poppler
  *
  * Copyright (C) 2013 Igalia S.L.
- * Copyright (C) 2018 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2018, 2025 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -573,6 +574,11 @@ gchar *poppler_structure_element_get_text(PopplerStructureElement *poppler_struc
     return result;
 }
 
+/**
+ * PopplerStructureElementIter:
+ *
+ * Since 24.10 this type supports g_autoptr
+ */
 struct _PopplerStructureElementIter
 {
     PopplerDocument *document;
@@ -761,6 +767,11 @@ PopplerStructureElementIter *poppler_structure_element_iter_get_child(PopplerStr
     return nullptr;
 }
 
+/**
+ * PopplerTextSpan:
+ *
+ * Since 24.10 this type supports g_autoptr
+ */
 struct _PopplerTextSpan
 {
     gchar *text;
@@ -782,7 +793,7 @@ enum
 static PopplerTextSpan *text_span_poppler_text_span(const TextSpan &span)
 {
     PopplerTextSpan *new_span = g_slice_new0(PopplerTextSpan);
-    if (GooString *text = span.getText()) {
+    if (const GooString *text = span.getText()) {
         new_span->text = _poppler_goo_string_to_utf8(text);
     }
 
@@ -796,11 +807,14 @@ static PopplerTextSpan *text_span_poppler_text_span(const TextSpan &span)
         const GooString *font_name = span.getFont()->getFamily();
         if (font_name) {
             new_span->font_name = _poppler_goo_string_to_utf8(font_name);
-        } else if (span.getFont()->getName()) {
-            const GooString aux(*span.getFont()->getName());
-            new_span->font_name = _poppler_goo_string_to_utf8(&aux);
         } else {
-            new_span->font_name = nullptr;
+            const std::optional<std::string> &fontName = span.getFont()->getName();
+            if (fontName) {
+                const GooString aux(*fontName);
+                new_span->font_name = _poppler_goo_string_to_utf8(&aux);
+            } else {
+                new_span->font_name = nullptr;
+            }
         }
 
         if (span.getFont()->isFixedWidth()) {

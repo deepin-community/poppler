@@ -16,10 +16,10 @@
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2006 Thorkild Stray <thorkild@ifi.uio.no>
 // Copyright (C) 2007 Jeff Muizelaar <jeff@infidigm.net>
-// Copyright (C) 2007, 2011, 2017, 2021 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2007, 2011, 2017, 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2009-2013, 2015 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2009, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2009, 2012, 2013, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2012, 2013, 2018, 2019, 2021, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2012 William Bader <williambader@hotmail.com>
@@ -27,6 +27,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
+// Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -111,6 +112,9 @@ public:
     // box is the crop box?
     virtual bool needClipToCropBox() { return false; }
 
+    // Does this device supports transparency (alpha channel) in JPX streams?
+    virtual bool supportJPXtransparency() { return false; }
+
     //----- initialization and control
 
     // Set default transform matrix.
@@ -142,27 +146,27 @@ public:
 
         auto invalidref = Ref::INVALID();
         if (defaultGrayProfile) {
-            auto cs = new GfxICCBasedColorSpace(1, new GfxDeviceGrayColorSpace(), &invalidref);
+            auto cs = std::make_unique<GfxICCBasedColorSpace>(1, std::make_unique<GfxDeviceGrayColorSpace>(), &invalidref);
 
             cs->setProfile(defaultGrayProfile);
             cs->buildTransforms(state); // needs to happen after state->setDisplayProfile has been called
-            state->setDefaultGrayColorSpace(cs);
+            state->setDefaultGrayColorSpace(std::move(cs));
         }
 
         if (defaultRGBProfile) {
-            auto cs = new GfxICCBasedColorSpace(3, new GfxDeviceRGBColorSpace(), &invalidref);
+            auto cs = std::make_unique<GfxICCBasedColorSpace>(3, std::make_unique<GfxDeviceRGBColorSpace>(), &invalidref);
 
             cs->setProfile(defaultRGBProfile);
             cs->buildTransforms(state); // needs to happen after state->setDisplayProfile has been called
-            state->setDefaultRGBColorSpace(cs);
+            state->setDefaultRGBColorSpace(std::move(cs));
         }
 
         if (defaultCMYKProfile) {
-            auto cs = new GfxICCBasedColorSpace(4, new GfxDeviceCMYKColorSpace(), &invalidref);
+            auto cs = std::make_unique<GfxICCBasedColorSpace>(4, std::make_unique<GfxDeviceCMYKColorSpace>(), &invalidref);
 
             cs->setProfile(defaultCMYKProfile);
             cs->buildTransforms(state); // needs to happen after state->setDisplayProfile has been called
-            state->setDefaultCMYKColorSpace(cs);
+            state->setDefaultCMYKColorSpace(std::move(cs));
         }
 #endif
     }
@@ -173,14 +177,8 @@ public:
     virtual void cvtDevToUser(double dx, double dy, double *ux, double *uy);
     virtual void cvtUserToDev(double ux, double uy, int *dx, int *dy);
 
-    const double *getDefCTM() const
-    {
-        return defCTM;
-    }
-    const double *getDefICTM() const
-    {
-        return defICTM;
-    }
+    const double *getDefCTM() const { return defCTM; }
+    const double *getDefICTM() const { return defICTM; }
 
     //----- save/restore graphics state
     virtual void saveState(GfxState * /*state*/) { }
@@ -240,34 +238,13 @@ public:
     {
         return false;
     }
-    virtual bool functionShadedFill(GfxState * /*state*/, GfxFunctionShading * /*shading*/)
-    {
-        return false;
-    }
-    virtual bool axialShadedFill(GfxState * /*state*/, GfxAxialShading * /*shading*/, double /*tMin*/, double /*tMax*/)
-    {
-        return false;
-    }
-    virtual bool axialShadedSupportExtend(GfxState * /*state*/, GfxAxialShading * /*shading*/)
-    {
-        return false;
-    }
-    virtual bool radialShadedFill(GfxState * /*state*/, GfxRadialShading * /*shading*/, double /*sMin*/, double /*sMax*/)
-    {
-        return false;
-    }
-    virtual bool radialShadedSupportExtend(GfxState * /*state*/, GfxRadialShading * /*shading*/)
-    {
-        return false;
-    }
-    virtual bool gouraudTriangleShadedFill(GfxState *state, GfxGouraudTriangleShading *shading)
-    {
-        return false;
-    }
-    virtual bool patchMeshShadedFill(GfxState *state, GfxPatchMeshShading *shading)
-    {
-        return false;
-    }
+    virtual bool functionShadedFill(GfxState * /*state*/, GfxFunctionShading * /*shading*/) { return false; }
+    virtual bool axialShadedFill(GfxState * /*state*/, GfxAxialShading * /*shading*/, double /*tMin*/, double /*tMax*/) { return false; }
+    virtual bool axialShadedSupportExtend(GfxState * /*state*/, GfxAxialShading * /*shading*/) { return false; }
+    virtual bool radialShadedFill(GfxState * /*state*/, GfxRadialShading * /*shading*/, double /*sMin*/, double /*sMax*/) { return false; }
+    virtual bool radialShadedSupportExtend(GfxState * /*state*/, GfxRadialShading * /*shading*/) { return false; }
+    virtual bool gouraudTriangleShadedFill(GfxState *state, GfxGouraudTriangleShading *shading) { return false; }
+    virtual bool patchMeshShadedFill(GfxState *state, GfxPatchMeshShading *shading) { return false; }
 
     //----- path clipping
 
@@ -347,26 +324,20 @@ public:
     virtual void type3D1(GfxState * /*state*/, double /*wx*/, double /*wy*/, double /*llx*/, double /*lly*/, double /*urx*/, double /*ury*/) { }
 
     //----- form XObjects
-    virtual void beginForm(Ref /*id*/) { }
+    virtual void beginForm(Object * /* obj */, Ref /*id*/) { }
     virtual void drawForm(Ref /*id*/) { }
-    virtual void endForm(Ref /*id*/) { }
+    virtual void endForm(Object * /* obj */, Ref /*id*/) { }
 
     //----- PostScript XObjects
     virtual void psXObject(Stream * /*psStream*/, Stream * /*level1Stream*/) { }
 
     //----- Profiling
     void startProfile();
-    std::unordered_map<std::string, ProfileData> *getProfileHash() const
-    {
-        return profileHash.get();
-    }
+    std::unordered_map<std::string, ProfileData> *getProfileHash() const { return profileHash.get(); }
     std::unique_ptr<std::unordered_map<std::string, ProfileData>> endProfile();
 
     //----- transparency groups and soft masks
-    virtual bool checkTransparencyGroup(GfxState * /*state*/, bool /*knockout*/)
-    {
-        return true;
-    }
+    virtual bool checkTransparencyGroup(GfxState * /*state*/, bool /*knockout*/) { return true; }
     virtual void beginTransparencyGroup(GfxState * /*state*/, const double * /*bbox*/, GfxColorSpace * /*blendingColorSpace*/, bool /*isolated*/, bool /*knockout*/, bool /*forSoftMask*/) { }
     virtual void endTransparencyGroup(GfxState * /*state*/) { }
     virtual void paintTransparencyGroup(GfxState * /*state*/, const double * /*bbox*/) { }
@@ -377,51 +348,21 @@ public:
     virtual void processLink(AnnotLink * /*link*/) { }
 
 #if 1 //~tmp: turn off anti-aliasing temporarily
-    virtual bool getVectorAntialias()
-    {
-        return false;
-    }
+    virtual bool getVectorAntialias() { return false; }
     virtual void setVectorAntialias(bool /*vaa*/) { }
 #endif
 
 #ifdef USE_CMS
-    void setDisplayProfile(const GfxLCMSProfilePtr &profile)
-    {
-        displayprofile = profile;
-    }
-    GfxLCMSProfilePtr getDisplayProfile() const
-    {
-        return displayprofile;
-    }
-    void setDefaultGrayProfile(const GfxLCMSProfilePtr &profile)
-    {
-        defaultGrayProfile = profile;
-    }
-    GfxLCMSProfilePtr getDefaultGrayProfile() const
-    {
-        return defaultGrayProfile;
-    }
-    void setDefaultRGBProfile(const GfxLCMSProfilePtr &profile)
-    {
-        defaultRGBProfile = profile;
-    }
-    GfxLCMSProfilePtr getDefaultRGBProfile() const
-    {
-        return defaultRGBProfile;
-    }
-    void setDefaultCMYKProfile(const GfxLCMSProfilePtr &profile)
-    {
-        defaultCMYKProfile = profile;
-    }
-    GfxLCMSProfilePtr getDefaultCMYKProfile() const
-    {
-        return defaultCMYKProfile;
-    }
+    void setDisplayProfile(const GfxLCMSProfilePtr &profile) { displayprofile = profile; }
+    GfxLCMSProfilePtr getDisplayProfile() const { return displayprofile; }
+    void setDefaultGrayProfile(const GfxLCMSProfilePtr &profile) { defaultGrayProfile = profile; }
+    GfxLCMSProfilePtr getDefaultGrayProfile() const { return defaultGrayProfile; }
+    void setDefaultRGBProfile(const GfxLCMSProfilePtr &profile) { defaultRGBProfile = profile; }
+    GfxLCMSProfilePtr getDefaultRGBProfile() const { return defaultRGBProfile; }
+    void setDefaultCMYKProfile(const GfxLCMSProfilePtr &profile) { defaultCMYKProfile = profile; }
+    GfxLCMSProfilePtr getDefaultCMYKProfile() const { return defaultCMYKProfile; }
 
-    PopplerCache<Ref, GfxICCBasedColorSpace> *getIccColorSpaceCache()
-    {
-        return &iccColorSpaceCache;
-    }
+    PopplerCache<Ref, GfxICCBasedColorSpace> *getIccColorSpaceCache() { return &iccColorSpaceCache; }
 #endif
 
 private:

@@ -20,12 +20,15 @@
 // Copyright (C) 2007 Julien Rebetez <julienr@svn.gnome.org>
 // Copyright (C) 2008 Iñigo Martínez <inigomartinez@gmail.com>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
-// Copyright (C) 2012, 2017, 2018, 2020, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2012, 2017, 2018, 2020, 2021, 2023 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2013, 2017, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020, 2021 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2024 Pablo Correa Gómez <ablocorrea@hotmail.com>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2025 Even Rouault <even.rouault@spatialys.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -87,7 +90,7 @@ public:
     // Construct a new PageAttrs object by merging a dictionary
     // (of type Pages or Page) into another PageAttrs object.  If
     // <attrs> is nullptr, uses defaults.
-    PageAttrs(PageAttrs *attrs, Dict *dict);
+    PageAttrs(const PageAttrs *attrs, Dict *dict);
 
     // Destructor.
     ~PageAttrs();
@@ -140,7 +143,7 @@ class POPPLER_PRIVATE_EXPORT Page
 {
 public:
     // Constructor.
-    Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *attrsA, Form *form);
+    Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, std::unique_ptr<PageAttrs> attrsA, Form *form);
 
     // Destructor.
     ~Page();
@@ -173,6 +176,9 @@ public:
     PDFDoc *getDoc() { return doc; }
     Ref getRef() { return pageRef; }
 
+    // Keep in API. This is used by GDAL
+    const Object &getPageObj() const { return pageObj; }
+
     // Get resource dictionary.
     Dict *getResourceDict();
     Object *getResourceDictObject();
@@ -181,7 +187,7 @@ public:
     // Get annotations array.
     Object getAnnotsObject(XRef *xrefA = nullptr) { return annotsObj.fetch(xrefA ? xrefA : xref); }
     // Add a new annotation to the page
-    void addAnnot(Annot *annot);
+    bool addAnnot(Annot *annot);
     // Remove an existing annotation from the page
     void removeAnnot(Annot *annot);
 
@@ -220,8 +226,8 @@ public:
 
     std::unique_ptr<LinkAction> getAdditionalAction(PageAdditionalActionsType type);
 
-    Gfx *createGfx(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool printing, bool (*abortCheckCbk)(void *data), void *abortCheckCbkData,
-                   XRef *xrefA = nullptr);
+    std::unique_ptr<Gfx> createGfx(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool (*abortCheckCbk)(void *data), void *abortCheckCbkData,
+                                   XRef *xrefA = nullptr);
 
     // Display a page.
     void display(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, bool printing, bool (*abortCheckCbk)(void *data) = nullptr, void *abortCheckCbkData = nullptr,
@@ -242,6 +248,10 @@ public:
 
     bool hasStandaloneFields() const { return !standaloneFields.empty(); }
 
+    // Get the integer key of the page's entry in the structural parent tree.
+    // Returns -1 if the page dict does not contain a StructParents key.
+    int getStructParents() const { return structParents; }
+
 private:
     // replace xref
     void replaceXRef(XRef *xrefA);
@@ -249,9 +259,9 @@ private:
     PDFDoc *doc;
     XRef *xref; // the xref table for this PDF file
     Object pageObj; // page dictionary
-    Ref pageRef; // page reference
+    const Ref pageRef; // page reference
     int num; // page number
-    PageAttrs *attrs; // page attributes
+    std::unique_ptr<PageAttrs> attrs; // page attributes
     Annots *annots; // annotations
     Object annotsObj; // annotations array
     Object contents; // page contents
@@ -259,6 +269,7 @@ private:
     Object trans; // page transition
     Object actions; // page additional actions
     double duration; // page duration
+    int structParents; // integer key of page in structure parent tree
     bool ok; // true if page is valid
     mutable std::recursive_mutex mutex;
     // standalone widgets are special FormWidget's inside a Page that *are not*
@@ -266,7 +277,7 @@ private:
     // i.e. the PDF document does not have a FormField associated with them. We
     // create standalone FormFields to contain those special FormWidgets, as
     // they are 'de facto' being used to implement tooltips. See #34
-    std::vector<FormField *> standaloneFields;
+    std::vector<std::unique_ptr<FormField>> standaloneFields;
     void loadStandaloneFields(Annots *annotations, Form *form);
 };
 

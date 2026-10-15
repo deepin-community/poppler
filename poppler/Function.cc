@@ -13,13 +13,14 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2008-2010, 2013-2015, 2017-2020, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2008-2010, 2013-2015, 2017-2020, 2022-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2011 Andrea Canciani <ranma42@gmail.com>
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -50,7 +51,7 @@
 
 Function::Function() : domain {} { }
 
-Function::~Function() { }
+Function::~Function() = default;
 
 Function *Function::parse(Object *funcObj)
 {
@@ -193,7 +194,7 @@ IdentityFunction::IdentityFunction()
     hasRange = false;
 }
 
-IdentityFunction::~IdentityFunction() { }
+IdentityFunction::~IdentityFunction() = default;
 
 void IdentityFunction::transform(const double *in, double *out) const
 {
@@ -363,10 +364,13 @@ SampledFunction::SampledFunction(Object *funcObj, Dict *dict) : cacheOut {}
         error(errSyntaxError, -1, "Function has invalid number of samples");
         return;
     }
+    if (!str->reset()) {
+        error(errSyntaxError, -1, "Stream reset error");
+        return;
+    }
     buf = 0;
     bits = 0;
     bitMask = (1 << sampleBits) - 1;
-    str->reset();
     for (i = 0; i < nSamples; ++i) {
         if (sampleBits == 8) {
             s = str->getChar();
@@ -524,7 +528,7 @@ void SampledFunction::transform(const double *in, double *out) const
 
 bool SampledFunction::hasDifferentResultSet(const Function *func) const
 {
-    if (func->getType() == 0) {
+    if (func->getType() == Type::Sampled) {
         SampledFunction *compTo = (SampledFunction *)func;
         if (compTo->getSampleNumber() != nSamples) {
             return true;
@@ -622,7 +626,7 @@ ExponentialFunction::ExponentialFunction(Object *funcObj, Dict *dict)
     ok = true;
 }
 
-ExponentialFunction::~ExponentialFunction() { }
+ExponentialFunction::~ExponentialFunction() = default;
 
 ExponentialFunction::ExponentialFunction(const ExponentialFunction *func) : Function(func)
 {
@@ -656,7 +660,6 @@ void ExponentialFunction::transform(const double *in, double *out) const
             }
         }
     }
-    return;
 }
 
 //------------------------------------------------------------------------
@@ -762,7 +765,6 @@ StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, std::set<int> 
 
     n = funcs[0]->getOutputSize();
     ok = true;
-    return;
 }
 
 StitchingFunction::StitchingFunction(const StitchingFunction *func) : Function(func)
@@ -797,7 +799,7 @@ StitchingFunction::~StitchingFunction()
             }
         }
     }
-    gfree(funcs);
+    gfree(static_cast<void *>(funcs));
     gfree(bounds);
     gfree(encode);
     gfree(scale);
@@ -1108,7 +1110,6 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
     int i;
 
     code = nullptr;
-    codeString = nullptr;
     codeSize = 0;
     ok = false;
 
@@ -1127,11 +1128,14 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
         goto err1;
     }
     str = funcObj->getStream();
+    if (!str->reset()) {
+        error(errSyntaxError, -1, "Stream reset error");
+        goto err1;
+    }
 
     //----- parse the function
-    codeString = new GooString();
-    str->reset();
-    if (getToken(str).cmp("{") != 0) {
+    codeString = std::make_unique<GooString>();
+    if (getToken(str)->cmp("{") != 0) {
         error(errSyntaxError, -1, "Expected '{{' at start of PostScript function");
         goto err1;
     }
@@ -1174,7 +1178,6 @@ PostScriptFunction::PostScriptFunction(const PostScriptFunction *func) : Functio
 PostScriptFunction::~PostScriptFunction()
 {
     gfree(code);
-    delete codeString;
 }
 
 void PostScriptFunction::transform(const double *in, double *out) const
@@ -1231,8 +1234,10 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
     int a, b, mid, cmp;
 
     while (true) {
-        GooString tok = getToken(str);
-        const char *p = tok.c_str();
+        // This needs to be on the heap to help make parseCode
+        // able to call itself more times recursively
+        std::unique_ptr<GooString> tok = getToken(str);
+        const char *p = tok->c_str();
         if (isdigit(*p) || *p == '.' || *p == '-') {
             isReal = false;
             for (; *p; ++p) {
@@ -1244,13 +1249,13 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
             resizeCode(*codePtr);
             if (isReal) {
                 code[*codePtr].type = psReal;
-                code[*codePtr].real = gatof(tok.c_str());
+                code[*codePtr].real = gatof(tok->c_str());
             } else {
                 code[*codePtr].type = psInt;
-                code[*codePtr].intg = atoi(tok.c_str());
+                code[*codePtr].intg = atoi(tok->c_str());
             }
             ++*codePtr;
-        } else if (!tok.cmp("{")) {
+        } else if (!tok->cmp("{")) {
             opPtr = *codePtr;
             *codePtr += 3;
             resizeCode(opPtr + 2);
@@ -1258,7 +1263,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 return false;
             }
             tok = getToken(str);
-            if (!tok.cmp("{")) {
+            if (!tok->cmp("{")) {
                 elsePtr = *codePtr;
                 if (!parseCode(str, codePtr)) {
                     return false;
@@ -1267,7 +1272,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
             } else {
                 elsePtr = -1;
             }
-            if (!tok.cmp("if")) {
+            if (!tok->cmp("if")) {
                 if (elsePtr >= 0) {
                     error(errSyntaxError, -1, "Got 'if' operator with two blocks in PostScript function");
                     return false;
@@ -1276,7 +1281,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 code[opPtr].op = psOpIf;
                 code[opPtr + 2].type = psBlock;
                 code[opPtr + 2].blk = *codePtr;
-            } else if (!tok.cmp("ifelse")) {
+            } else if (!tok->cmp("ifelse")) {
                 if (elsePtr < 0) {
                     error(errSyntaxError, -1, "Got 'ifelse' operator with one block in PostScript function");
                     return false;
@@ -1291,7 +1296,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 error(errSyntaxError, -1, "Expected if/ifelse operator in PostScript function");
                 return false;
             }
-        } else if (!tok.cmp("}")) {
+        } else if (!tok->cmp("}")) {
             resizeCode(*codePtr);
             code[*codePtr].type = psOperator;
             code[*codePtr].op = psOpReturn;
@@ -1304,7 +1309,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
             // invariant: psOpNames[a] < tok < psOpNames[b]
             while (b - a > 1) {
                 mid = (a + b) / 2;
-                cmp = tok.cmp(psOpNames[mid]);
+                cmp = tok->cmp(psOpNames[mid]);
                 if (cmp > 0) {
                     a = mid;
                 } else if (cmp < 0) {
@@ -1314,7 +1319,7 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
                 }
             }
             if (cmp != 0) {
-                error(errSyntaxError, -1, "Unknown operator '{0:t}' in PostScript function", &tok);
+                error(errSyntaxError, -1, "Unknown operator '{0:t}' in PostScript function", tok.get());
                 return false;
             }
             resizeCode(*codePtr);
@@ -1326,12 +1331,12 @@ bool PostScriptFunction::parseCode(Stream *str, int *codePtr)
     return true;
 }
 
-GooString PostScriptFunction::getToken(Stream *str)
+std::unique_ptr<GooString> PostScriptFunction::getToken(Stream *str)
 {
     int c;
     bool comment;
 
-    GooString s;
+    std::string s;
     comment = false;
     while (true) {
         if ((c = str->getChar()) == EOF) {
@@ -1349,10 +1354,10 @@ GooString PostScriptFunction::getToken(Stream *str)
         }
     }
     if (c == '{' || c == '}') {
-        s.append((char)c);
+        s.push_back((char)c);
     } else if (isdigit(c) || c == '.' || c == '-') {
         while (true) {
-            s.append((char)c);
+            s.push_back((char)c);
             c = str->lookChar();
             if (c == EOF || !(isdigit(c) || c == '.' || c == '-')) {
                 break;
@@ -1362,7 +1367,7 @@ GooString PostScriptFunction::getToken(Stream *str)
         }
     } else {
         while (true) {
-            s.append((char)c);
+            s.push_back((char)c);
             c = str->lookChar();
             if (c == EOF || !isalnum(c)) {
                 break;
@@ -1371,7 +1376,7 @@ GooString PostScriptFunction::getToken(Stream *str)
             codeString->append(c);
         }
     }
-    return s;
+    return std::make_unique<GooString>(s);
 }
 
 void PostScriptFunction::resizeCode(int newSize)

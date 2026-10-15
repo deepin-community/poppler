@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Martin Kretzschmar <martink@gnome.org>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2007-2010, 2012, 2015, 2017-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007-2010, 2012, 2015, 2017-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2006, 2007 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
@@ -40,12 +40,15 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018, 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Kai Pastor <dg0yt@darc.de>
 // Copyright (C) 2021, 2022 Stefan Löffler <st.loeffler@gmail.com>
 // Copyright (C) 2021 sunderme <sunderme@gmx.de>
 // Copyright (C) 2022 Even Rouault <even.rouault@spatialys.com>
 // Copyright (C) 2022 Claes Nästén <pekdon@gmail.com>
+// Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023 Shivodit Gill <shivodit.gill@gmail.com>
+// Copyright (C) 2024 Keyu Tao <me@taoky.moe>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -58,15 +61,19 @@
 #include <cstring>
 #include <cstdio>
 #include <cctype>
+#include <filesystem>
 #ifdef _WIN32
 #    include <shlobj.h>
 #    include <mbstring.h>
 #endif
+#ifdef ANDROID
+#    include <android/font.h>
+#    include <android/font_matcher.h>
+#    include <android/system_fonts.h>
+#endif
 #include "goo/glibc.h"
-#include "goo/gmem.h"
 #include "goo/GooString.h"
 #include "goo/gfile.h"
-#include "goo/gdir.h"
 #include "Error.h"
 #include "NameToCharCode.h"
 #include "CharCodeToUnicode.h"
@@ -189,17 +196,17 @@ static const char *get_poppler_fontsdir(void)
 class SysFontInfo
 {
 public:
-    GooString *name;
+    const std::unique_ptr<GooString> name;
     bool bold;
     bool italic;
     bool oblique;
     bool fixedWidth;
-    GooString *path;
+    const std::unique_ptr<GooString> path;
     SysFontType type;
     int fontNum; // for TrueType collections
-    GooString *substituteName;
+    const std::unique_ptr<GooString> substituteName;
 
-    SysFontInfo(GooString *nameA, bool boldA, bool italicA, bool obliqueA, bool fixedWidthA, GooString *pathA, SysFontType typeA, int fontNumA, GooString *substituteNameA);
+    SysFontInfo(std::unique_ptr<GooString> &&nameA, bool boldA, bool italicA, bool obliqueA, bool fixedWidthA, std::unique_ptr<GooString> &&pathA, SysFontType typeA, int fontNumA, std::unique_ptr<GooString> &&substituteNameA);
     ~SysFontInfo();
     SysFontInfo(const SysFontInfo &) = delete;
     SysFontInfo &operator=(const SysFontInfo &) = delete;
@@ -208,25 +215,18 @@ public:
     bool match(const GooString *nameA, bool boldA, bool italicA) const;
 };
 
-SysFontInfo::SysFontInfo(GooString *nameA, bool boldA, bool italicA, bool obliqueA, bool fixedWidthA, GooString *pathA, SysFontType typeA, int fontNumA, GooString *substituteNameA)
+SysFontInfo::SysFontInfo(std::unique_ptr<GooString> &&nameA, bool boldA, bool italicA, bool obliqueA, bool fixedWidthA, std::unique_ptr<GooString> &&pathA, SysFontType typeA, int fontNumA, std::unique_ptr<GooString> &&substituteNameA)
+    : name(std::move(nameA)), path(std::move(pathA)), substituteName(std::move(substituteNameA))
 {
-    name = nameA;
     bold = boldA;
     italic = italicA;
     oblique = obliqueA;
     fixedWidth = fixedWidthA;
-    path = pathA;
     type = typeA;
     fontNum = fontNumA;
-    substituteName = substituteNameA;
 }
 
-SysFontInfo::~SysFontInfo()
-{
-    delete name;
-    delete path;
-    delete substituteName;
-}
+SysFontInfo::~SysFontInfo() = default;
 
 bool SysFontInfo::match(const SysFontInfo *fi) const
 {
@@ -262,10 +262,7 @@ public:
     void scanWindowsFonts(const std::string &winFontDir);
 #endif
 #ifdef WITH_FONTCONFIGURATION_FONTCONFIG
-    void addFcFont(SysFontInfo *si)
-    {
-        fonts.push_back(si);
-    }
+    void addFcFont(SysFontInfo *si) { fonts.push_back(si); }
 #endif
 private:
 #ifdef _WIN32
@@ -275,7 +272,7 @@ private:
     std::vector<SysFontInfo *> fonts;
 };
 
-SysFontList::SysFontList() { }
+SysFontList::SysFontList() = default;
 
 SysFontList::~SysFontList()
 {
@@ -368,7 +365,7 @@ const SysFontInfo *SysFontList::find(const std::string &name, bool fixedWidth, b
     for (const SysFontInfo *f : fonts) {
         fi = f;
         if (fi->match(name2, bold, italic, oblique, fixedWidth)) {
-            if (std::find(filesToIgnore.begin(), filesToIgnore.end(), fi->path->toStr()) == filesToIgnore.end()) {
+            if (std::ranges::find(filesToIgnore, fi->path->toStr()) == filesToIgnore.end()) {
                 break;
             }
         }
@@ -379,7 +376,7 @@ const SysFontInfo *SysFontList::find(const std::string &name, bool fixedWidth, b
         for (const SysFontInfo *f : fonts) {
             fi = f;
             if (fi->match(name2, false, italic)) {
-                if (std::find(filesToIgnore.begin(), filesToIgnore.end(), fi->path->toStr()) == filesToIgnore.end()) {
+                if (std::ranges::find(filesToIgnore, fi->path->toStr()) == filesToIgnore.end()) {
                     break;
                 }
             }
@@ -391,7 +388,7 @@ const SysFontInfo *SysFontList::find(const std::string &name, bool fixedWidth, b
         for (const SysFontInfo *f : fonts) {
             fi = f;
             if (fi->match(name2, false, false)) {
-                if (std::find(filesToIgnore.begin(), filesToIgnore.end(), fi->path->toStr()) == filesToIgnore.end()) {
+                if (std::ranges::find(filesToIgnore, fi->path->toStr()) == filesToIgnore.end()) {
                     break;
                 }
             }
@@ -411,7 +408,7 @@ const SysFontInfo *SysFontList::find(const std::string &name, bool fixedWidth, b
 // parsing
 //------------------------------------------------------------------------
 
-GlobalParams::GlobalParams(const char *customPopplerDataDir) : popplerDataDir(customPopplerDataDir)
+GlobalParams::GlobalParams(const std::string &customPopplerDataDir) : popplerDataDir(customPopplerDataDir)
 {
     // scan the encoding in reverse because we want the lowest-numbered
     // index for each char name ('space' is encoded twice)
@@ -430,8 +427,8 @@ GlobalParams::GlobalParams(const char *customPopplerDataDir) : popplerDataDir(cu
     profileCommands = false;
     errQuiet = false;
 
-    cidToUnicodeCache = new CharCodeToUnicodeCache(cidToUnicodeCacheSize);
-    unicodeToUnicodeCache = new CharCodeToUnicodeCache(unicodeToUnicodeCacheSize);
+    cidToUnicodeCache = std::make_unique<CharCodeToUnicodeCache>(cidToUnicodeCacheSize);
+    unicodeToUnicodeCache = std::make_unique<CharCodeToUnicodeCache>(unicodeToUnicodeCacheSize);
     unicodeMapCache = new UnicodeMapCache();
     cMapCache = new CMapCache();
 
@@ -450,13 +447,13 @@ GlobalParams::GlobalParams(const char *customPopplerDataDir) : popplerDataDir(cu
 
     // set up the residentUnicodeMaps table
     residentUnicodeMaps.reserve(6);
-    UnicodeMap map = { "Latin1", false, latin1UnicodeMapRanges, latin1UnicodeMapLen };
+    UnicodeMap map = { "Latin1", false, std::span(latin1UnicodeMapRanges, latin1UnicodeMapLen) };
     residentUnicodeMaps.emplace(map.getEncodingName(), std::move(map));
-    map = { "ASCII7", false, ascii7UnicodeMapRanges, ascii7UnicodeMapLen };
+    map = { "ASCII7", false, std::span(ascii7UnicodeMapRanges, ascii7UnicodeMapLen) };
     residentUnicodeMaps.emplace(map.getEncodingName(), std::move(map));
-    map = { "Symbol", false, symbolUnicodeMapRanges, symbolUnicodeMapLen };
+    map = { "Symbol", false, std::span(symbolUnicodeMapRanges, symbolUnicodeMapLen) };
     residentUnicodeMaps.emplace(map.getEncodingName(), std::move(map));
-    map = { "ZapfDingbats", false, zapfDingbatsUnicodeMapRanges, zapfDingbatsUnicodeMapLen };
+    map = { "ZapfDingbats", false, std::span(zapfDingbatsUnicodeMapRanges, zapfDingbatsUnicodeMapLen) };
     residentUnicodeMaps.emplace(map.getEncodingName(), std::move(map));
     map = { "UTF-8", true, &mapUTF8 };
     residentUnicodeMaps.emplace(map.getEncodingName(), std::move(map));
@@ -468,49 +465,30 @@ GlobalParams::GlobalParams(const char *customPopplerDataDir) : popplerDataDir(cu
 
 void GlobalParams::scanEncodingDirs()
 {
-    GDir *dir;
-    std::unique_ptr<GDirEntry> entry;
-    const char *dataRoot = popplerDataDir ? popplerDataDir : POPPLER_DATADIR;
+    std::string dataRoot = !popplerDataDir.empty() ? popplerDataDir : std::string { POPPLER_DATADIR };
 
-    // allocate buffer large enough to append "/nameToUnicode"
-    size_t bufSize = strlen(dataRoot) + strlen("/nameToUnicode") + 1;
-    char *dataPathBuffer = new char[bufSize];
-
-    snprintf(dataPathBuffer, bufSize, "%s/nameToUnicode", dataRoot);
-    dir = new GDir(dataPathBuffer, true);
-    while (entry = dir->getNextEntry(), entry != nullptr) {
-        if (!entry->isDir()) {
-            parseNameToUnicode(entry->getFullPath());
+    std::error_code ec; // if ec is set, we also get the end iterator, so that's kind of okay.  If not creating with a error code, we get an exception if poppler data is missing
+    for (const auto &entry : std::filesystem::directory_iterator { dataRoot + "/nameToUnicode", ec }) {
+        if (entry.is_regular_file()) {
+            parseNameToUnicode(entry.path());
         }
     }
-    delete dir;
 
-    snprintf(dataPathBuffer, bufSize, "%s/cidToUnicode", dataRoot);
-    dir = new GDir(dataPathBuffer, false);
-    while (entry = dir->getNextEntry(), entry != nullptr) {
-        addCIDToUnicode(entry->getName(), entry->getFullPath());
+    for (const auto &entry : std::filesystem::directory_iterator { dataRoot + "/cidToUnicode", ec }) {
+        addCIDToUnicode(entry.path().filename().string(), entry.path().string());
     }
-    delete dir;
 
-    snprintf(dataPathBuffer, bufSize, "%s/unicodeMap", dataRoot);
-    dir = new GDir(dataPathBuffer, false);
-    while (entry = dir->getNextEntry(), entry != nullptr) {
-        addUnicodeMap(entry->getName(), entry->getFullPath());
+    for (const auto &entry : std::filesystem::directory_iterator { dataRoot + "/unicodeMap", ec }) {
+        addUnicodeMap(entry.path().filename().string(), entry.path().string());
     }
-    delete dir;
 
-    snprintf(dataPathBuffer, bufSize, "%s/cMap", dataRoot);
-    dir = new GDir(dataPathBuffer, false);
-    while (entry = dir->getNextEntry(), entry != nullptr) {
-        addCMapDir(entry->getName(), entry->getFullPath());
-        toUnicodeDirs.push_back(entry->getFullPath()->copy());
+    for (const auto &entry : std::filesystem::directory_iterator { dataRoot + "/cMap", ec }) {
+        addCMapDir(entry.path().filename().string(), entry.path().string());
+        toUnicodeDirs.push_back(entry.path().string());
     }
-    delete dir;
-
-    delete[] dataPathBuffer;
 }
 
-void GlobalParams::parseNameToUnicode(const GooString *name)
+void GlobalParams::parseNameToUnicode(const std::filesystem::path &name)
 {
     char *tok1, *tok2;
     FILE *f;
@@ -519,8 +497,8 @@ void GlobalParams::parseNameToUnicode(const GooString *name)
     Unicode u;
     char *tokptr;
 
-    if (!(f = openFile(name->c_str(), "r"))) {
-        error(errIO, -1, "Couldn't open 'nameToUnicode' file '{0:t}'", name);
+    if (!(f = openFile(name.string().c_str(), "r"))) {
+        error(errIO, -1, "Couldn't open 'nameToUnicode' file '{0:s}'", name.string().c_str());
         return;
     }
     line = 1;
@@ -531,26 +509,26 @@ void GlobalParams::parseNameToUnicode(const GooString *name)
             sscanf(tok1, "%x", &u);
             nameToUnicodeText->add(tok2, u);
         } else {
-            error(errConfig, -1, "Bad line in 'nameToUnicode' file ({0:t}:{1:d})", name, line);
+            error(errConfig, -1, "Bad line in 'nameToUnicode' file ({0:s}:{1:d})", name.string().c_str(), line);
         }
         ++line;
     }
     fclose(f);
 }
 
-void GlobalParams::addCIDToUnicode(const GooString *collection, const GooString *fileName)
+void GlobalParams::addCIDToUnicode(std::string &&collection, std::string &&fileName)
 {
-    cidToUnicodes[collection->toStr()] = fileName->toStr();
+    cidToUnicodes[collection] = fileName;
 }
 
-void GlobalParams::addUnicodeMap(const GooString *encodingName, const GooString *fileName)
+void GlobalParams::addUnicodeMap(std::string &&encodingName, std::string &&fileName)
 {
-    unicodeMaps[encodingName->toStr()] = fileName->toStr();
+    unicodeMaps[encodingName] = fileName;
 }
 
-void GlobalParams::addCMapDir(const GooString *collection, const GooString *dir)
+void GlobalParams::addCMapDir(std::string &&collection, std::string &&dir)
 {
-    cMapDirs.emplace(collection->toStr(), dir->toStr());
+    cMapDirs.emplace(collection, dir);
 }
 
 bool GlobalParams::parseYesNo2(const char *token, bool *flag)
@@ -571,14 +549,9 @@ GlobalParams::~GlobalParams()
 
     delete nameToUnicodeZapfDingbats;
     delete nameToUnicodeText;
-    for (auto entry : toUnicodeDirs) {
-        delete entry;
-    }
     delete sysFonts;
     delete textEncoding;
 
-    delete cidToUnicodeCache;
-    delete unicodeToUnicodeCache;
     delete unicodeMapCache;
     delete cMapCache;
 }
@@ -635,15 +608,15 @@ FILE *GlobalParams::getUnicodeMapFile(const std::string &encodingName)
     return file;
 }
 
-FILE *GlobalParams::findCMapFile(const GooString *collection, const GooString *cMapName)
+FILE *GlobalParams::findCMapFile(const GooString &collection, const GooString &cMapName)
 {
     FILE *file = nullptr;
 
     globalParamsLocker();
-    const auto collectionCMapDirs = cMapDirs.equal_range(collection->toStr());
+    const auto collectionCMapDirs = cMapDirs.equal_range(collection.toStr());
     for (auto cMapDir = collectionCMapDirs.first; cMapDir != collectionCMapDirs.second; ++cMapDir) {
         auto *const path = new GooString(cMapDir->second);
-        appendToPath(path, cMapName->c_str());
+        appendToPath(path, cMapName.c_str());
         file = openFile(path->c_str(), "r");
         delete path;
         if (file) {
@@ -660,8 +633,8 @@ FILE *GlobalParams::findToUnicodeFile(const GooString *name)
     FILE *f;
 
     globalParamsLocker();
-    for (const GooString *dir : toUnicodeDirs) {
-        fileName = appendToPath(dir->copy(), name->c_str());
+    for (const std::string &dir : toUnicodeDirs) {
+        fileName = appendToPath(new GooString(dir), name->c_str());
         f = openFile(fileName->c_str(), "r");
         delete fileName;
         if (f) {
@@ -712,7 +685,7 @@ static const char *getFontLang(const GfxFont *font)
             } else if (strcmp(collection->c_str(), "Adobe-Identity") == 0) {
                 lang = "xx";
             } else {
-                error(errUnimplemented, -1, "Unknown CID font collection, please report to poppler bugzilla.");
+                error(errUnimplemented, -1, "Unknown CID font collection: {0:t}. If this is expected to be a valid PDF document, please report to poppler bugtracker.", collection);
                 lang = "xx";
             }
         } else {
@@ -744,7 +717,7 @@ static FcPattern *buildFcPattern(const GfxFont *font, const GooString *base14Nam
 
     // remove the - from the names, for some reason, Fontconfig does not
     // understand "MS-Mincho" but does with "MS Mincho"
-    std::replace(fontName.begin(), fontName.end(), '-', ' ');
+    std::ranges::replace(fontName, '-', ' ');
 
     size_t start = std::string::npos;
     findModifier(fontName, modStart, "Regular", start);
@@ -880,25 +853,23 @@ static FcPattern *buildFcPattern(const GfxFont *font, const GooString *base14Nam
 }
 #endif
 
-GooString *GlobalParams::findFontFile(const std::string &fontName)
+std::optional<std::string> GlobalParams::findFontFile(const std::string &fontName)
 {
-    GooString *path = nullptr;
-
     setupBaseFonts(POPPLER_FONTSDIR);
     globalParamsLocker();
     const auto fontFile = fontFiles.find(fontName);
     if (fontFile != fontFiles.end()) {
-        path = new GooString(fontFile->second);
+        return fontFile->second;
     }
 
-    return path;
+    return {};
 }
 
 #if defined(WITH_FONTCONFIGURATION_FONTCONFIG) || defined(WITH_FONTCONFIGURATION_WIN32)
 
 static bool supportedFontForEmbedding(Unicode uChar, const char *filepath, int faceIndex)
 {
-    if (!GooString::endsWith(filepath, ".ttf") && !GooString::endsWith(filepath, ".ttc") && !GooString::endsWith(filepath, ".otf")) {
+    if (!std::string_view(filepath).ends_with(".ttf") && !std::string_view(filepath).ends_with(".ttc") && !std::string_view(filepath).ends_with(".otf")) {
         // for now we only support ttf, ttc, otf fonts
         return false;
     }
@@ -938,29 +909,29 @@ static bool supportedFontForEmbedding(Unicode uChar, const char *filepath, int f
 // not needed for fontconfig
 void GlobalParams::setupBaseFonts(const char *) { }
 
-GooString *GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font)
+std::optional<std::string> GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font, GooString *substituteFontName)
 {
     SysFontType type;
     int fontNum;
 
-    return findSystemFontFile(font, &type, &fontNum, nullptr, base14Name);
+    return findSystemFontFile(font, &type, &fontNum, substituteFontName, base14Name);
 }
 
-GooString *GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString *substituteFontName, const GooString *base14Name)
+std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString *substituteFontName, const GooString *base14Name)
 {
     const SysFontInfo *fi = nullptr;
     FcPattern *p = nullptr;
-    GooString *path = nullptr;
+    std::optional<std::string> path;
     const std::optional<std::string> &fontName = font->getName();
     GooString substituteName;
     if (!fontName) {
-        return nullptr;
+        return {};
     }
 
     globalParamsLocker();
 
     if ((fi = sysFonts->find(*fontName, font->isFixedWidth(), true))) {
-        path = fi->path->copy();
+        path = fi->path->toStr();
         *type = fi->type;
         *fontNum = fi->fontNum;
         substituteName.Set(fi->substituteName->c_str());
@@ -1052,10 +1023,10 @@ GooString *GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *ty
                     *fontNum = 0;
                     *type = (!strncasecmp(ext, ".ttc", 4)) ? sysFontTTC : sysFontTTF;
                     FcPatternGetInteger(set->fonts[i], FC_INDEX, 0, fontNum);
-                    SysFontInfo *sfi = new SysFontInfo(new GooString(*fontName), bold, italic, oblique, font->isFixedWidth(), new GooString((char *)s), *type, *fontNum, substituteName.copy());
+                    SysFontInfo *sfi = new SysFontInfo(std::make_unique<GooString>(*fontName), bold, italic, oblique, font->isFixedWidth(), std::make_unique<GooString>((char *)s), *type, *fontNum, substituteName.copy());
                     sysFonts->addFcFont(sfi);
                     fi = sfi;
-                    path = new GooString((char *)s);
+                    path = std::string((char *)s);
                 } else if (!strncasecmp(ext, ".pfa", 4) || !strncasecmp(ext, ".pfb", 4)) {
                     int weight, slant;
                     bool bold = font->isBold();
@@ -1075,10 +1046,10 @@ GooString *GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *ty
                     *fontNum = 0;
                     *type = (!strncasecmp(ext, ".pfa", 4)) ? sysFontPFA : sysFontPFB;
                     FcPatternGetInteger(set->fonts[i], FC_INDEX, 0, fontNum);
-                    SysFontInfo *sfi = new SysFontInfo(new GooString(*fontName), bold, italic, oblique, font->isFixedWidth(), new GooString((char *)s), *type, *fontNum, substituteName.copy());
+                    SysFontInfo *sfi = new SysFontInfo(std::make_unique<GooString>(*fontName), bold, italic, oblique, font->isFixedWidth(), std::make_unique<GooString>((char *)s), *type, *fontNum, substituteName.copy());
                     sysFonts->addFcFont(sfi);
                     fi = sfi;
-                    path = new GooString((char *)s);
+                    path = std::string((char *)s);
                 } else {
                     continue;
                 }
@@ -1094,8 +1065,8 @@ GooString *GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *ty
         }
         FcFontSetDestroy(set);
     }
-    if (path == nullptr && (fi = sysFonts->find(*fontName, font->isFixedWidth(), false))) {
-        path = fi->path->copy();
+    if (!path && (fi = sysFonts->find(*fontName, font->isFixedWidth(), false))) {
+        path = fi->path->toStr();
         *type = fi->type;
         *fontNum = fi->fontNum;
     }
@@ -1116,6 +1087,7 @@ FamilyStyleFontSearchResult GlobalParams::findSystemFontFileForFamilyAndStyle(co
     FcConfigSubstitute(nullptr, p, FcMatchPattern);
     FcDefaultSubstitute(p);
     if (p) {
+        const std::unique_ptr<FcPattern, void (*)(FcPattern *)> pDeleter(p, [](FcPattern *pattern) { FcPatternDestroy(pattern); });
         FcResult res;
         FcFontSet *fontSet = FcFontSort(nullptr, p, FcFalse, nullptr, &res);
         if (fontSet) {
@@ -1128,7 +1100,7 @@ FamilyStyleFontSearchResult GlobalParams::findSystemFontFileForFamilyAndStyle(co
                     FcPatternGetInteger(fontSet->fonts[i], FC_INDEX, 0, &faceIndex);
 
                     const std::string sFilePath = reinterpret_cast<char *>(fcFilePath);
-                    if (std::find(filesToIgnore.begin(), filesToIgnore.end(), sFilePath) == filesToIgnore.end()) {
+                    if (std::ranges::find(filesToIgnore, sFilePath) == filesToIgnore.end()) {
                         return FamilyStyleFontSearchResult(sFilePath, faceIndex);
                     }
                 }
@@ -1158,11 +1130,16 @@ UCharFontSearchResult GlobalParams::findSystemFontFileForUChar(Unicode uChar, co
             int faceIndex = 0;
             FcChar8 *fcFamily = nullptr;
             FcChar8 *fcStyle = nullptr;
+            FcCharSet *fcCharSet = nullptr;
             FcPatternGetString(fontSet->fonts[i], FC_FILE, 0, &fcFilePath);
             FcPatternGetInteger(fontSet->fonts[i], FC_INDEX, 0, &faceIndex);
             FcPatternGetString(fontSet->fonts[i], FC_FAMILY, 0, &fcFamily);
             FcPatternGetString(fontSet->fonts[i], FC_STYLE, 0, &fcStyle);
-            if (!fcFilePath || !fcFamily || !fcStyle) {
+            FcPatternGetCharSet(fontSet->fonts[i], FC_CHARSET, 0, &fcCharSet);
+            if (!fcFilePath || !fcFamily || !fcStyle || !fcCharSet) {
+                continue;
+            }
+            if (!FcCharSetHasChar(fcCharSet, uChar)) {
                 continue;
             }
 
@@ -1176,11 +1153,156 @@ UCharFontSearchResult GlobalParams::findSystemFontFileForUChar(Unicode uChar, co
 
     return {};
 }
+#elif defined(WITH_FONTCONFIGURATION_ANDROID)
+// Uses the font file mapping created by GlobalParams::setupBaseFonts
+// to return the path to a base-14 font file
+std::optional<std::string> GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font, GooString *substituteFontName)
+{
+    return findFontFile(base14Name->toStr());
+}
+
+#    if __ANDROID_API__ >= 29
+
+// This struct is used by the AFontMatcher unique_ptr for destroying the
+// AFontMatcher object
+struct AFontMatcherDestroyer
+{
+    void operator()(AFontMatcher *fontmatcher) { AFontMatcher_destroy(fontmatcher); }
+};
+
+// This struct is used by the AFontMatcher unique_ptr for destroying the
+// AFont object
+struct AFontDestroyer
+{
+    void operator()(AFont *afont) { AFont_close(afont); }
+};
+
+#    endif
+
+std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString *substituteFontName, const GooString *base14Name)
+{
+    const std::optional<std::string> &fontName = font->getName();
+
+    if (!fontName) {
+        return {};
+    }
+
+    globalParamsLocker();
+
+#    if __ANDROID_API__ >= 29
+    // If font is not found in the default base-14 fonts,
+    // use Android-NDK's AFontMatcher API instead.
+    // Documentation for AFontMatcher API can be found at:
+    // https://developer.android.com/ndk/reference/group/font
+    std::string genericFontFamily = "serif";
+
+    if (!font->isSerif()) {
+        genericFontFamily = "sans-serif";
+    } else if (font->isFixedWidth()) {
+        genericFontFamily = "monospace";
+    }
+
+    std::unique_ptr<AFontMatcher, AFontMatcherDestroyer> fontmatcher { AFontMatcher_create() };
+
+    // Set font weight and italics for the font.
+    AFontMatcher_setStyle(fontmatcher.get(), font->getWeight() * 100, font->isItalic());
+
+    // Get font match and the font file's path
+    std::unique_ptr<AFont, AFontDestroyer> afont { AFontMatcher_match(fontmatcher.get(), genericFontFamily.c_str(), (uint16_t *)u"A", 1, nullptr) };
+    std::string path = std::string(AFont_getFontFilePath(afont.get()));
+
+    // Set the type of font. Fonts returned by AFontMatcher are of
+    // four possible types - ttf, otf, ttc, otc.
+    if (path.ends_with(".ttf") || path.ends_with(".otf")) {
+        *type = sysFontTTF;
+    } else if (path.ends_with(".ttc") || path.ends_with(".otc")) {
+        *type = sysFontTTC;
+    }
+#    else
+#        pragma message("Compiling without AFontMatcher API due to Android API version being lower than 29.")
+#    endif
+
+    return path;
+}
+
+static struct
+{
+    const char *name;
+    const char *otFileName;
+} displayFontTab[] = { { "Courier", "NimbusMonoPS-Regular.otf" },
+                       { "Courier-Bold", "NimbusMonoPS-Bold.otf" },
+                       { "Courier-BoldOblique", "NimbusMonoPS-BoldItalic.otf" },
+                       { "Courier-Oblique", "NimbusMonoPS-Italic.otf" },
+                       { "Helvetica", "NimbusSans-Regular.otf" },
+                       { "Helvetica-Bold", "NimbusSans-Bold.otf" },
+                       { "Helvetica-BoldOblique", "NimbusSans-BoldItalic.otf" },
+                       { "Helvetica-Oblique", "NimbusSans-Italic.otf" },
+                       { "Symbol", "StandardSymbolsPS.otf" },
+                       { "Times-Bold", "NimbusRoman-Bold.otf" },
+                       { "Times-BoldItalic", "NimbusRoman-BoldItalic.otf" },
+                       { "Times-Italic", "NimbusRoman-Italic.otf" },
+                       { "Times-Roman", "NimbusRoman-Regular.otf" },
+                       { "ZapfDingbats", "D050000L.otf" },
+                       { nullptr, nullptr } };
+
+// The path to the font directory. Set by GlobalParams::setFontDir()
+static std::string displayFontDir;
+
+// This method creates a mapping from base-14 font names to their
+// paths on the file system. On Android, it searches within the
+// directory set by GlobalParams::setFontDir().
+void GlobalParams::setupBaseFonts(const char *dir)
+{
+    FILE *f;
+    int i;
+
+    for (i = 0; displayFontTab[i].name; ++i) {
+        if (fontFiles.count(displayFontTab[i].name) > 0) {
+            continue;
+        }
+
+        std::unique_ptr<GooString> fontName = std::make_unique<GooString>(displayFontTab[i].name);
+        std::unique_ptr<GooString> fileName;
+        if (dir) {
+            fileName.reset(appendToPath(new GooString(dir), displayFontTab[i].otFileName));
+            if ((f = openFile(fileName->c_str(), "rb"))) {
+                fclose(f);
+            } else {
+                fileName.reset();
+            }
+        }
+        if (!displayFontDir.empty()) {
+            fileName.reset(appendToPath(new GooString(displayFontDir), displayFontTab[i].otFileName));
+            if ((f = openFile(fileName->c_str(), "rb"))) {
+                fclose(f);
+            } else {
+                fileName.reset();
+            }
+        }
+        if (!fileName) {
+            error(errConfig, -1, "No display font for '{0:s}'", displayFontTab[i].name);
+            continue;
+        }
+        addFontFile(fontName->toStr(), fileName->toStr());
+    }
+}
+
+FamilyStyleFontSearchResult GlobalParams::findSystemFontFileForFamilyAndStyle(const std::string &fontFamily, const std::string &fontStyle, const std::vector<std::string> &filesToIgnore)
+{
+    error(errUnimplemented, -1, "GlobalParams::findSystemFontFileForFamilyAndStyle not implemented for this platform");
+    return {};
+}
+
+UCharFontSearchResult GlobalParams::findSystemFontFileForUChar(Unicode uChar, const GfxFont &fontToEmulate)
+{
+    error(errUnimplemented, -1, "GlobalParams::findSystemFontFileForUChar not implemented for this platform");
+    return {};
+}
 
 #elif defined(WITH_FONTCONFIGURATION_WIN32)
 #    include "GlobalParamsWin.cc"
 
-GooString *GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font)
+std::optional<std::string> GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font, GooString * /*substituteFontName*/)
 {
     return findFontFile(base14Name->toStr());
 }
@@ -1199,7 +1321,7 @@ UCharFontSearchResult GlobalParams::findSystemFontFileForUChar(Unicode uChar, co
     return {};
 }
 
-GooString *GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font)
+std::optional<std::string> GlobalParams::findBase14FontFile(const GooString *base14Name, const GfxFont *font, GooString * /*substituteFontName*/)
 {
     return findFontFile(base14Name->toStr());
 }
@@ -1258,23 +1380,23 @@ void GlobalParams::setupBaseFonts(const char *dir)
             error(errConfig, -1, "No display font for '{0:s}'", displayFontTab[i].name);
             continue;
         }
-        addFontFile(fontName.get(), fileName.get());
+        addFontFile(fontName->toStr(), fileName->toStr());
     }
 }
 
-GooString *GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString * /*substituteFontName*/, const GooString * /*base14Name*/)
+std::optional<std::string> GlobalParams::findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString * /*substituteFontName*/, const GooString * /*base14Name*/)
 {
     const SysFontInfo *fi;
-    GooString *path;
+    std::optional<std::string> path;
 
     const std::optional<std::string> &fontName = font->getName();
-    if (!fontName)
-        return nullptr;
+    if (!fontName) {
+        return {};
+    }
 
-    path = nullptr;
     globalParamsLocker();
     if ((fi = sysFonts->find(*fontName, font->isFixedWidth(), false))) {
-        path = fi->path->copy();
+        path = fi->path->toStr();
         *type = fi->type;
         *fontNum = fi->fontNum;
     }
@@ -1317,9 +1439,9 @@ bool GlobalParams::getErrQuiet()
     return errQuiet;
 }
 
-CharCodeToUnicode *GlobalParams::getCIDToUnicode(const GooString *collection)
+std::shared_ptr<CharCodeToUnicode> GlobalParams::getCIDToUnicode(const GooString *collection)
 {
-    CharCodeToUnicode *ctu;
+    std::shared_ptr<CharCodeToUnicode> ctu;
 
     globalParamsLocker();
     if (!(ctu = cidToUnicodeCache->getCharCodeToUnicode(collection))) {
@@ -1346,7 +1468,7 @@ const UnicodeMap *GlobalParams::getUnicodeMap(const std::string &encodingName)
     return map;
 }
 
-std::shared_ptr<CMap> GlobalParams::getCMap(const GooString *collection, const GooString *cMapName)
+std::shared_ptr<CMap> GlobalParams::getCMap(const GooString &collection, const GooString &cMapName)
 {
     cMapCacheLocker();
     return cMapCache->getCMap(collection, cMapName);
@@ -1360,6 +1482,7 @@ const UnicodeMap *GlobalParams::getTextEncoding()
 std::vector<std::string> GlobalParams::getEncodingNames()
 {
     std::vector<std::string> result;
+    result.reserve(residentUnicodeMaps.size() + unicodeMaps.size());
     for (const auto &unicodeMap : residentUnicodeMaps) {
         result.push_back(unicodeMap.first);
     }
@@ -1373,10 +1496,10 @@ std::vector<std::string> GlobalParams::getEncodingNames()
 // functions to set parameters
 //------------------------------------------------------------------------
 
-void GlobalParams::addFontFile(const GooString *fontName, const GooString *path)
+void GlobalParams::addFontFile(const std::string &fontName, const std::string &path)
 {
     globalParamsLocker();
-    fontFiles[fontName->toStr()] = path->toStr();
+    fontFiles[fontName] = path;
 }
 
 void GlobalParams::setTextEncoding(const char *encodingName)
@@ -1404,12 +1527,21 @@ void GlobalParams::setErrQuiet(bool errQuietA)
     errQuiet = errQuietA;
 }
 
+#ifdef ANDROID
+void GlobalParams::setFontDir(const std::string &fontDir)
+{
+#    if defined(WITH_FONTCONFIGURATION_ANDROID)
+    displayFontDir = fontDir;
+#    endif
+}
+#endif
+
 GlobalParamsIniter::GlobalParamsIniter(ErrorCallback errorCallback)
 {
     const std::scoped_lock lock { mutex };
 
     if (count == 0) {
-        globalParams = std::make_unique<GlobalParams>(!customDataDir.empty() ? customDataDir.c_str() : nullptr);
+        globalParams = std::make_unique<GlobalParams>(customDataDir);
 
         setErrorCallback(errorCallback);
     }
