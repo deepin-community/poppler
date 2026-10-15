@@ -6,11 +6,12 @@
 //
 // Copyright 2013, 2014 Igalia S.L.
 // Copyright 2014 Luigi Scarso <luigi.scarso@gmail.com>
-// Copyright 2014, 2017-2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright 2014, 2017-2019, 2021, 2023, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2015 Dmytro Morgun <lztoad@gmail.com>
-// Copyright 2018, 2021 Adrian Johnson <ajohnson@redneon.com>
+// Copyright 2018, 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -154,15 +155,15 @@ static bool isTextString(Object *value)
     static bool name(Object *value)                                                                                                                                                                                                            \
     {                                                                                                                                                                                                                                          \
         if (!value->isArray())                                                                                                                                                                                                                 \
-            return allowSingle ? checkItem(value) : false;                                                                                                                                                                                     \
+            return (allowSingle) ? checkItem(value) : false;                                                                                                                                                                                   \
                                                                                                                                                                                                                                                \
-        if (length && value->arrayGetLength() != length)                                                                                                                                                                                       \
+        if ((length) && value->arrayGetLength() != (length))                                                                                                                                                                                   \
             return false;                                                                                                                                                                                                                      \
                                                                                                                                                                                                                                                \
         bool okay = true;                                                                                                                                                                                                                      \
         for (int i = 0; i < value->arrayGetLength(); i++) {                                                                                                                                                                                    \
             Object obj = value->arrayGet(i);                                                                                                                                                                                                   \
-            if ((!allowNulls && obj.isNull()) || !checkItem(&obj)) {                                                                                                                                                                           \
+            if ((!(allowNulls) && obj.isNull()) || !checkItem(&obj)) {                                                                                                                                                                         \
                 okay = false;                                                                                                                                                                                                                  \
                 break;                                                                                                                                                                                                                         \
             }                                                                                                                                                                                                                                  \
@@ -193,7 +194,7 @@ struct AttributeMapEntry
 
 struct AttributeDefaults
 {
-    AttributeDefaults() {}; // needed to support old clang
+    AttributeDefaults() = default; // needed to support old clang
 
     Object Inline = Object(objName, "Inline");
     Object LrTb = Object(objName, "LrTb");
@@ -210,20 +211,11 @@ struct AttributeDefaults
 
 static const AttributeDefaults attributeDefaults;
 
-#define ATTR_LIST_END                                                                                                                                                                                                                          \
-    {                                                                                                                                                                                                                                          \
-        Attribute::Unknown, nullptr, nullptr, false, nullptr                                                                                                                                                                                   \
-    }
+#define ATTR_LIST_END { Attribute::Unknown, nullptr, nullptr, false, nullptr }
 
-#define ATTR_WITH_DEFAULT(name, inherit, check, defval)                                                                                                                                                                                        \
-    {                                                                                                                                                                                                                                          \
-        Attribute::name, #name, &attributeDefaults.defval, inherit, check                                                                                                                                                                      \
-    }
+#define ATTR_WITH_DEFAULT(name, inherit, check, defval) { Attribute::name, #name, &attributeDefaults.defval, inherit, check }
 
-#define ATTR(name, inherit, check)                                                                                                                                                                                                             \
-    {                                                                                                                                                                                                                                          \
-        Attribute::name, #name, nullptr, inherit, check                                                                                                                                                                                        \
-    }
+#define ATTR(name, inherit, check) { Attribute::name, #name, nullptr, inherit, check }
 
 static const AttributeMapEntry attributeMapCommonShared[] = { ATTR_WITH_DEFAULT(Placement, false, isPlacementName, Inline),
                                                               ATTR_WITH_DEFAULT(WritingMode, true, isWritingModeName, LrTb),
@@ -547,7 +539,7 @@ static StructElement::Type nameToType(const char *name)
 // Attribute
 //------------------------------------------------------------------------
 
-Attribute::Attribute(GooString &&nameA, Object *valueA) : type(UserProperty), owner(UserProperties), revision(0), name(std::move(nameA)), value(), hidden(false), formatted(nullptr)
+Attribute::Attribute(GooString &&nameA, Object *valueA) : type(UserProperty), owner(UserProperties), revision(0), name(std::move(nameA)), hidden(false)
 {
     assert(valueA);
     value = valueA->copy();
@@ -557,10 +549,7 @@ Attribute::Attribute(Type typeA, Object *valueA)
     : type(typeA),
       owner(UserProperties), // TODO: Determine corresponding owner from Type
       revision(0),
-      name(),
-      value(),
-      hidden(false),
-      formatted(nullptr)
+      hidden(false)
 {
     assert(valueA);
 
@@ -571,10 +560,7 @@ Attribute::Attribute(Type typeA, Object *valueA)
     }
 }
 
-Attribute::~Attribute()
-{
-    delete formatted;
-}
+Attribute::~Attribute() = default;
 
 const char *Attribute::getTypeName() const
 {
@@ -607,11 +593,10 @@ void Attribute::setFormattedValue(const char *formattedA)
         if (formatted) {
             formatted->Set(formattedA);
         } else {
-            formatted = new GooString(formattedA);
+            formatted = GooString(formattedA);
         }
     } else {
-        delete formatted;
-        formatted = nullptr;
+        formatted = {};
     }
 }
 
@@ -699,11 +684,6 @@ StructElement::StructData::StructData() : altText(nullptr), actualText(nullptr),
 
 StructElement::StructData::~StructData()
 {
-    delete altText;
-    delete actualText;
-    delete id;
-    delete title;
-    delete language;
     for (StructElement *element : elements) {
         delete element;
     }
@@ -712,7 +692,7 @@ StructElement::StructData::~StructData()
     }
 }
 
-StructElement::StructElement(Dict *element, StructTreeRoot *treeRootA, StructElement *parentA, std::set<int> &seen) : type(Unknown), treeRoot(treeRootA), parent(parentA), s(new StructData())
+StructElement::StructElement(Dict *element, StructTreeRoot *treeRootA, StructElement *parentA, RefRecursionChecker &seen) : type(Unknown), treeRoot(treeRootA), parent(parentA), s(new StructData())
 {
     assert(treeRoot);
     assert(element);
@@ -776,6 +756,15 @@ bool StructElement::getPageRef(Ref &ref) const
         return parent->getPageRef(ref);
     }
 
+    return false;
+}
+
+bool StructElement::getStmRef(Ref &ref) const
+{
+    if (stmRef.isRef()) {
+        ref = stmRef.getRef();
+        return true;
+    }
     return false;
 }
 
@@ -1055,7 +1044,7 @@ void StructElement::parse(Dict *element)
     }
 }
 
-StructElement *StructElement::parseChild(const Object *ref, Object *childObj, std::set<int> &seen)
+StructElement *StructElement::parseChild(const Object *ref, Object *childObj, RefRecursionChecker &seen)
 {
     assert(childObj);
     assert(ref);
@@ -1107,8 +1096,7 @@ StructElement *StructElement::parseChild(const Object *ref, Object *childObj, st
     } else if (childObj->isDict()) {
         if (!ref->isRef()) {
             error(errSyntaxError, -1, "Structure element dictionary is not an indirect reference ({0:s})", ref->getTypeName());
-        } else if (seen.find(ref->getRefNum()) == seen.end()) {
-            seen.insert(ref->getRefNum());
+        } else if (seen.insert(ref->getRef())) {
             child = new StructElement(childObj->getDict(), treeRoot, this, seen);
         } else {
             error(errSyntaxWarning, -1, "Loop detected in structure tree, skipping subtree at object {0:d}:{1:d}", ref->getRefNum(), ref->getRefGen());
@@ -1132,7 +1120,7 @@ StructElement *StructElement::parseChild(const Object *ref, Object *childObj, st
     return child;
 }
 
-void StructElement::parseChildren(Dict *element, std::set<int> &seen)
+void StructElement::parseChildren(Dict *element, RefRecursionChecker &seen)
 {
     Object kids = element->lookup("K");
     if (kids.isArray()) {

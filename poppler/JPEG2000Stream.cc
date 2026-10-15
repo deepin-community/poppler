@@ -4,13 +4,15 @@
 //
 // A JPX stream decoder using OpenJPEG
 //
-// Copyright 2008-2010, 2012, 2017-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2008-2010, 2012, 2017-2023 Albert Astals Cid <aacid@kde.org>
 // Copyright 2011 Daniel Glöckner <daniel-gl@gmx.net>
 // Copyright 2014, 2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright 2013, 2014 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2015 Adam Reichold <adam.reichold@t-online.de>
 // Copyright 2015 Jakub Wilk <jwilk@jwilk.net>
 // Copyright 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2024, 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // Licensed under GPLv2 or later
 //
@@ -19,17 +21,6 @@
 #include "config.h"
 #include "JPEG2000Stream.h"
 #include <openjpeg.h>
-
-#define OPENJPEG_VERSION_ENCODE(major, minor, micro) (((major)*10000) + ((minor)*100) + ((micro)*1))
-
-#ifdef OPJ_VERSION_MAJOR
-#    define OPENJPEG_VERSION OPENJPEG_VERSION_ENCODE(OPJ_VERSION_MAJOR, OPJ_VERSION_MINOR, OPJ_VERSION_BUILD)
-#else
-// OpenJPEG started providing version macros in version 2.1.
-// If the version macro is not found, set the version to 2.0.0 and
-// assume there will be no API changes in 2.0.x.
-#    define OPENJPEG_VERSION OPENJPEG_VERSION_ENCODE(2, 0, 0)
-#endif
 
 struct JPXStreamPrivate
 {
@@ -80,6 +71,7 @@ static inline int doGetChar(JPXStreamPrivate *priv)
 JPXStream::JPXStream(Stream *strA) : FilterStream(strA)
 {
     priv = new JPXStreamPrivate;
+    handleJPXtransparency = false;
 }
 
 JPXStream::~JPXStream()
@@ -89,10 +81,12 @@ JPXStream::~JPXStream()
     delete priv;
 }
 
-void JPXStream::reset()
+bool JPXStream::reset()
 {
     priv->counter = 0;
     priv->ccounter = 0;
+
+    return true;
 }
 
 void JPXStream::close()
@@ -144,9 +138,9 @@ int JPXStream::lookChar()
     return doLookChar(priv);
 }
 
-GooString *JPXStream::getPSFilter(int psLevel, const char *indent)
+std::optional<std::string> JPXStream::getPSFilter(int psLevel, const char *indent)
 {
-    return nullptr;
+    return {};
 }
 
 bool JPXStream::isBinary(bool last) const
@@ -154,22 +148,26 @@ bool JPXStream::isBinary(bool last) const
     return str->isBinary(true);
 }
 
-void JPXStream::getImageParams(int *bitsPerComponent, StreamColorSpaceMode *csMode)
+void JPXStream::getImageParams(int *bitsPerComponent, StreamColorSpaceMode *csMode, bool *hasAlpha)
 {
     if (unlikely(priv->inited == false)) {
         init();
     }
 
     *bitsPerComponent = 8;
+    *hasAlpha = false;
     int numComps = (priv->image) ? priv->image->numcomps : 1;
     if (priv->image) {
         if (priv->image->color_space == OPJ_CLRSPC_SRGB && numComps == 4) {
             numComps = 3;
+            *hasAlpha = true;
         } else if (priv->image->color_space == OPJ_CLRSPC_SYCC && numComps == 4) {
             numComps = 3;
+            *hasAlpha = true;
         } else if (numComps == 2) {
             numComps = 1;
         } else if (numComps > 4) {
+            *hasAlpha = true;
             numComps = 4;
         }
     }
@@ -283,7 +281,7 @@ void JPXStream::init()
         }
         priv->npixels = priv->image->comps[0].w * priv->image->comps[0].h;
         priv->ncomps = priv->image->numcomps;
-        if (alpha == 1 && smaskInData == 0) {
+        if (alpha == 1 && smaskInData == 0 && !supportJPXtransparency()) {
             priv->ncomps--;
         }
         for (int component = 0; component < priv->ncomps; component++) {
@@ -333,11 +331,7 @@ void JPXStreamPrivate::init2(OPJ_CODEC_FORMAT format, const unsigned char *buf, 
 
     stream = opj_stream_default_create(OPJ_TRUE);
 
-#if OPENJPEG_VERSION >= OPENJPEG_VERSION_ENCODE(2, 1, 0)
     opj_stream_set_user_data(stream, &jpxData, nullptr);
-#else
-    opj_stream_set_user_data(stream, &jpxData);
-#endif
 
     opj_stream_set_read_function(stream, jpxRead_callback);
     opj_stream_set_skip_function(stream, jpxSkip_callback);

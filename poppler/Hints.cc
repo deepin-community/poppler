@@ -12,6 +12,7 @@
 // Copyright 2016 Jeffrey Morlan <jmmorlan@sonic.net>
 // Copyright 2019 LE GARREC Vincent <legarrec.vincent@gmail.com>
 // Copyright 2019 Adam Reichold <adam.reichold@t-online.de>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -161,7 +162,7 @@ Hints::~Hints()
             gfree(sharedObjectId[i]);
         }
     }
-    gfree(sharedObjectId);
+    gfree(static_cast<void *>(sharedObjectId));
     gfree(numSharedObject);
 
     gfree(groupLength);
@@ -190,7 +191,10 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
 
     if (hintsOffset && hintsLength) {
         std::unique_ptr<Stream> s(str->makeSubStream(hintsOffset, false, hintsLength, Object(objNull)));
-        s->reset();
+        if (!s->reset()) {
+            ok = false;
+            return;
+        }
         for (unsigned int i = 0; i < hintsLength; i++) {
             const int c = s->getChar();
             if (unlikely(c == EOF)) {
@@ -204,7 +208,10 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
 
     if (hintsOffset2 && hintsLength2) {
         std::unique_ptr<Stream> s(str->makeSubStream(hintsOffset2, false, hintsLength2, Object(objNull)));
-        s->reset();
+        if (!s->reset()) {
+            ok = false;
+            return;
+        }
         for (unsigned int i = 0; i < hintsLength2; i++) {
             const int c = s->getChar();
             if (unlikely(c == EOF)) {
@@ -230,15 +237,20 @@ void Hints::readTables(BaseStream *str, Linearization *linearization, XRef *xref
         int sharedStreamOffset = 0;
         if (hintsDict->lookupInt("S", nullptr, &sharedStreamOffset) && sharedStreamOffset > 0) {
 
-            hintsStream->reset();
-            ok = readPageOffsetTable(hintsStream);
-
-            if (ok) {
-                hintsStream->reset();
-                for (int i = 0; i < sharedStreamOffset; i++) {
-                    hintsStream->getChar();
+            if (!hintsStream->reset()) {
+                ok = false;
+            } else {
+                ok = readPageOffsetTable(hintsStream);
+                if (ok) {
+                    if (hintsStream->reset()) {
+                        for (int i = 0; i < sharedStreamOffset; i++) {
+                            hintsStream->getChar();
+                        }
+                        ok = readSharedObjectsTable(hintsStream);
+                    } else {
+                        ok = false;
+                    }
                 }
-                ok = readSharedObjectsTable(hintsStream);
             }
         } else {
             error(errSyntaxWarning, -1, "Invalid shared object hint table offset");
@@ -489,47 +501,6 @@ Goffset Hints::getPageOffset(int page)
     } else {
         return pageOffset[0];
     }
-}
-
-std::vector<ByteRange> *Hints::getPageRanges(int page)
-{
-    if ((page < 1) || (page > nPages)) {
-        return nullptr;
-    }
-
-    int idx;
-    if (page - 1 > pageFirst) {
-        idx = page - 1;
-    } else if (page - 1 < pageFirst) {
-        idx = page;
-    } else {
-        idx = 0;
-    }
-
-    ByteRange pageRange;
-    std::vector<ByteRange> *v = new std::vector<ByteRange>;
-
-    pageRange.offset = pageOffset[idx];
-    pageRange.length = pageLength[idx];
-    v->push_back(pageRange);
-
-    pageRange.offset = xRefOffset[idx];
-    pageRange.length = 20 * nObjects[idx];
-    v->push_back(pageRange);
-
-    for (unsigned int j = 0; j < numSharedObject[idx]; j++) {
-        unsigned int k = sharedObjectId[idx][j];
-
-        pageRange.offset = groupOffset[k];
-        pageRange.length = groupLength[k];
-        v->push_back(pageRange);
-
-        pageRange.offset = groupXRefOffset[k];
-        pageRange.length = 20 * groupNumObjects[k];
-        v->push_back(pageRange);
-    }
-
-    return v;
 }
 
 int Hints::getPageObjectNum(int page)

@@ -3,10 +3,11 @@
 // This file is under the GPLv2 or later license
 //
 // Copyright (C) 2005-2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005, 2009, 2013, 2017, 2018, 2020, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2009, 2013, 2017, 2018, 2020, 2021, 2023 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2011 Simon Kellner <kellner@kit.edu>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright (C) 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -60,7 +61,7 @@ PageLabelInfo::Interval::Interval(Object *dict, int baseA)
 
 PageLabelInfo::PageLabelInfo(Object *tree, int numPages)
 {
-    std::set<int> alreadyParsedRefs;
+    RefRecursionChecker alreadyParsedRefs;
     parse(tree, alreadyParsedRefs);
 
     if (intervals.empty()) {
@@ -74,7 +75,7 @@ PageLabelInfo::PageLabelInfo(Object *tree, int numPages)
     curr->length = std::max(0, numPages - curr->base);
 }
 
-void PageLabelInfo::parse(const Object *tree, std::set<int> &alreadyParsedRefs)
+void PageLabelInfo::parse(const Object *tree, RefRecursionChecker &alreadyParsedRefs)
 {
     // leaf node
     Object nums = tree->dictLookup("Nums");
@@ -103,13 +104,9 @@ void PageLabelInfo::parse(const Object *tree, std::set<int> &alreadyParsedRefs)
         for (int i = 0; i < kidsArray->getLength(); ++i) {
             Ref ref;
             const Object kid = kidsArray->get(i, &ref);
-            if (ref != Ref::INVALID()) {
-                const int numObj = ref.num;
-                if (alreadyParsedRefs.find(numObj) != alreadyParsedRefs.end()) {
-                    error(errSyntaxError, -1, "loop in PageLabelInfo (numObj: {0:d})", numObj);
-                    continue;
-                }
-                alreadyParsedRefs.insert(numObj);
+            if (!alreadyParsedRefs.insert(ref)) {
+                error(errSyntaxError, -1, "loop in PageLabelInfo (ref.num: {0:d})", ref.num);
+                continue;
             }
             if (kid.isDict()) {
                 parse(&kid, alreadyParsedRefs);
@@ -122,7 +119,7 @@ bool PageLabelInfo::labelToIndex(GooString *label, int *index) const
 {
     const char *const str = label->c_str();
     const std::size_t strLen = label->getLength();
-    const bool strUnicode = label->hasUnicodeMarker();
+    const bool strUnicode = hasUnicodeByteOrderMark(label->toStr());
     int number;
     bool ok;
 
@@ -215,7 +212,7 @@ bool PageLabelInfo::indexToLabel(int index, GooString *label) const
 
     label->clear();
     label->append(matching_interval->prefix.c_str(), matching_interval->prefix.size());
-    if (label->hasUnicodeMarker()) {
+    if (hasUnicodeByteOrderMark(label->toStr())) {
         int i, len;
         char ucs2_char[2];
 

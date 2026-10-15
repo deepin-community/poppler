@@ -1,0 +1,28 @@
+Description: DateInfo: Fix timeToStringWithFormat buffer length
+ strftime places a NULL-terminated string in the buffer, so the std::string
+ buffer needs to be resized to not include the terminator character
+ (or anything after it).
+ .
+ Without this fix, modification dates in altered PDF documents (such as when
+ adding a digital signature) are not truncated properly, instead padding
+ the date with a null byte and extra spaces until the end of the buffer is
+ reached. This bad syntax compromises the ability to verify the signature
+ with other applications, but the Poppler signatory has no indication of this.
+Origin: upstream, https://gitlab.freedesktop.org/poppler/poppler/-/merge_requests/1824.patch
+Applied-Upstream: 25.06.0, https://gitlab.freedesktop.org/poppler/poppler/-/commit/55169105e121d5fbb7c50e2c744d750de5d0a7de
+Author: Erich E. Hoover <erich.e.hoover@gmail.com>
+Bug: https://gitlab.freedesktop.org/poppler/poppler/-/work_items/1596
+Bug-Debian: https://bugs.debian.org/1127146
+Reviewed-By: John Scott <jscott@posteo.net>
+Last-Update: 2026-07-01
+
+--- poppler-25.03.0.orig/poppler/DateInfo.cc
++++ poppler-25.03.0/poppler/DateInfo.cc
+@@ -122,6 +122,7 @@ std::string timeToStringWithFormat(const
+     while (strftime(&buf[0], buf.size(), fmt.c_str(), &localtime_tm) == 0) {
+         buf.resize(bufLen *= 2);
+     }
++    buf.resize(buf.find('\0'));
+     return buf;
+ }
+ 

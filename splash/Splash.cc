@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Marco Pesenti Gritti <mpg@redhat.com>
 // Copyright (C) 2010-2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
@@ -24,7 +24,7 @@
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2020 Tobias Deiminger <haxtibal@posteo.de>
-// Copyright (C) 2021 Even Rouault <even.rouault@spatialys.com>
+// Copyright (C) 2021, 2024 Even Rouault <even.rouault@spatialys.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -196,7 +196,7 @@ SplashPipeResultColorCtrl Splash::pipeResultColorAlphaBlend[] = { splashPipeResu
 
 //------------------------------------------------------------------------
 
-static void blendXor(SplashColorPtr src, SplashColorPtr dest, SplashColorPtr blend, SplashColorMode cm)
+static void blendXor(SplashColorPtr src, SplashColorPtr dest, SplashColorPtr blend, SplashColorMode cm) // NOLINT(readability-non-const-parameter) Needs to be of type SplashBlendFunc
 {
     int i;
 
@@ -1889,7 +1889,7 @@ SplashError Splash::stroke(SplashPath *path)
     SplashCoord d1, d2, t1, t2, w;
 
     if (debugMode) {
-        printf("stroke [dash:%ld] [width:%.2f]:\n", state->lineDash.size(), (double)state->lineWidth);
+        printf("stroke [dash:%zu] [width:%.2f]:\n", state->lineDash.size(), (double)state->lineWidth);
         dumpPath(path);
     }
     opClipRes = splashClipAllOutside;
@@ -3126,10 +3126,15 @@ void Splash::scaleMaskYdownXdown(SplashImageMaskSource src, void *srcData, int s
     xq = srcWidth % scaledWidth;
 
     // allocate buffers
-    lineBuf = (unsigned char *)gmalloc(srcWidth);
+    lineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+    if (unlikely(!lineBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf in Splash::scaleMaskYdownXdown");
+        return;
+    }
+
     pixBuf = (unsigned int *)gmallocn_checkoverflow(srcWidth, sizeof(int));
     if (unlikely(!pixBuf)) {
-        error(errInternal, -1, "Couldn't allocate memory for pixBux in Splash::scaleMaskYdownXdown");
+        error(errInternal, -1, "Couldn't allocate memory for pixBuf in Splash::scaleMaskYdownXdown");
         gfree(lineBuf);
         return;
     }
@@ -3216,8 +3221,18 @@ void Splash::scaleMaskYdownXup(SplashImageMaskSource src, void *srcData, int src
     xq = scaledWidth % srcWidth;
 
     // allocate buffers
-    lineBuf = (unsigned char *)gmalloc(srcWidth);
-    pixBuf = (unsigned int *)gmallocn(srcWidth, sizeof(int));
+    lineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+    if (unlikely(!lineBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf in Splash::scaleMaskYdownXup");
+        return;
+    }
+
+    pixBuf = (unsigned int *)gmallocn_checkoverflow(srcWidth, sizeof(int));
+    if (unlikely(!pixBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for pixBuf in Splash::scaleMaskYdownXup");
+        gfree(lineBuf);
+        return;
+    }
 
     // init y scale Bresenham
     yt = 0;
@@ -3294,7 +3309,11 @@ void Splash::scaleMaskYupXdown(SplashImageMaskSource src, void *srcData, int src
     xq = srcWidth % scaledWidth;
 
     // allocate buffers
-    lineBuf = (unsigned char *)gmalloc(srcWidth);
+    lineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+    if (unlikely(!lineBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf in Splash::scaleMaskYupXdown");
+        return;
+    }
 
     // init y scale Bresenham
     yt = 0;
@@ -3380,7 +3399,11 @@ void Splash::scaleMaskYupXup(SplashImageMaskSource src, void *srcData, int srcWi
     xq = scaledWidth % srcWidth;
 
     // allocate buffers
-    lineBuf = (unsigned char *)gmalloc(srcWidth);
+    lineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+    if (unlikely(!lineBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf in Splash::scaleMaskYupXup");
+        return;
+    }
 
     // init y scale Bresenham
     yt = 0;
@@ -3682,11 +3705,19 @@ SplashError Splash::arbitraryTransformImage(SplashImageSource src, SplashICCTran
 
     // compute the scale factors
     if (splashAbs(mat[0]) >= splashAbs(mat[1])) {
-        scaledWidth = xMax - xMin;
-        scaledHeight = yMax - yMin;
+        if (unlikely(checkedSubtraction(xMax, xMin, &scaledWidth))) {
+            return splashErrBadArg;
+        }
+        if (unlikely(checkedSubtraction(yMax, yMin, &scaledHeight))) {
+            return splashErrBadArg;
+        }
     } else {
-        scaledWidth = yMax - yMin;
-        scaledHeight = xMax - xMin;
+        if (unlikely(checkedSubtraction(yMax, yMin, &scaledWidth))) {
+            return splashErrBadArg;
+        }
+        if (unlikely(checkedSubtraction(xMax, xMin, &scaledHeight))) {
+            return splashErrBadArg;
+        }
     }
     if (scaledHeight <= 1 || scaledWidth <= 1 || tilingPattern) {
         if (mat[0] >= 0) {
@@ -3892,6 +3923,9 @@ SplashError Splash::arbitraryTransformImage(SplashImageSource src, SplashICCTran
             if (xa == xb) {
                 ++xb;
             }
+            if (unlikely(clipRes == splashClipAllInside && xb > bitmap->getWidth())) {
+                xb = bitmap->getWidth();
+            }
             if (clipRes != splashClipAllInside) {
                 clipRes2 = state->clip->testSpan(xa, xb - 1, y);
             } else {
@@ -4015,8 +4049,21 @@ bool Splash::scaleImageYdownXdown(SplashImageSource src, void *srcData, SplashCo
         return false;
     }
     if (srcAlpha) {
-        alphaLineBuf = (unsigned char *)gmalloc(srcWidth);
-        alphaPixBuf = (unsigned int *)gmallocn(srcWidth, sizeof(int));
+        alphaLineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+        if (unlikely(!alphaLineBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaLineBuf in Splash::scaleImageYdownXdown");
+            gfree(lineBuf);
+            gfree(pixBuf);
+            return false;
+        }
+        alphaPixBuf = (unsigned int *)gmallocn_checkoverflow(srcWidth, sizeof(int));
+        if (unlikely(!alphaPixBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaPixBuf in Splash::scaleImageYdownXdown");
+            gfree(lineBuf);
+            gfree(pixBuf);
+            gfree(alphaLineBuf);
+            return false;
+        }
     } else {
         alphaLineBuf = nullptr;
         alphaPixBuf = nullptr;
@@ -4248,10 +4295,28 @@ bool Splash::scaleImageYdownXup(SplashImageSource src, void *srcData, SplashColo
         error(errInternal, -1, "Splash::scaleImageYdownXup. Couldn't allocate pixBuf memory");
         return false;
     }
-    lineBuf = (unsigned char *)gmallocn(srcWidth, nComps);
+    lineBuf = (unsigned char *)gmallocn_checkoverflow(srcWidth, nComps);
+    if (unlikely(!lineBuf)) {
+        error(errInternal, -1, "Splash::scaleImageYdownXup. Couldn't allocate lineBuf memory");
+        gfree(pixBuf);
+        return false;
+    }
     if (srcAlpha) {
-        alphaLineBuf = (unsigned char *)gmalloc(srcWidth);
-        alphaPixBuf = (unsigned int *)gmallocn(srcWidth, sizeof(int));
+        alphaLineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+        if (unlikely(!alphaLineBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaLineBuf in Splash::scaleImageYdownXup");
+            gfree(lineBuf);
+            gfree(pixBuf);
+            return false;
+        }
+        alphaPixBuf = (unsigned int *)gmallocn_checkoverflow(srcWidth, sizeof(int));
+        if (unlikely(!alphaPixBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaPixBuf in Splash::scaleImageYdownXup");
+            gfree(lineBuf);
+            gfree(pixBuf);
+            gfree(alphaLineBuf);
+            return false;
+        }
     } else {
         alphaLineBuf = nullptr;
         alphaPixBuf = nullptr;
@@ -4400,7 +4465,12 @@ bool Splash::scaleImageYupXdown(SplashImageSource src, void *srcData, SplashColo
         return false;
     }
     if (srcAlpha) {
-        alphaLineBuf = (unsigned char *)gmalloc(srcWidth);
+        alphaLineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+        if (unlikely(!alphaLineBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaLineBuf in Splash::scaleImageYupXdown");
+            gfree(lineBuf);
+            return false;
+        }
     } else {
         alphaLineBuf = nullptr;
     }
@@ -4555,8 +4625,18 @@ bool Splash::scaleImageYupXup(SplashImageSource src, void *srcData, SplashColorM
 
     // allocate buffers
     lineBuf = (unsigned char *)gmallocn(srcWidth, nComps);
+    if (unlikely(!lineBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf in Splash::scaleImageYupXup");
+        return false;
+    }
+
     if (srcAlpha) {
-        alphaLineBuf = (unsigned char *)gmalloc(srcWidth);
+        alphaLineBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth);
+        if (unlikely(!alphaLineBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaLineBuf in Splash::scaleImageYupXup");
+            gfree(lineBuf);
+            return false;
+        }
     } else {
         alphaLineBuf = nullptr;
     }
@@ -4728,13 +4808,57 @@ bool Splash::scaleImageYupXupBilinear(SplashImageSource src, void *srcData, Spla
     }
 
     // allocate buffers
-    srcBuf = (unsigned char *)gmallocn(srcWidth + 1, nComps); // + 1 pixel of padding
-    lineBuf1 = (unsigned char *)gmallocn(scaledWidth, nComps);
-    lineBuf2 = (unsigned char *)gmallocn(scaledWidth, nComps);
+    srcBuf = (unsigned char *)gmallocn_checkoverflow(srcWidth + 1, nComps); // + 1 pixel of padding
+    if (unlikely(!srcBuf)) {
+        error(errInternal, -1, "Couldn't allocate memory for srcBuf in Splash::scaleImageYupXupBilinear");
+        return false;
+    }
+
+    lineBuf1 = (unsigned char *)gmallocn_checkoverflow(scaledWidth, nComps);
+    if (unlikely(!lineBuf1)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf1 in Splash::scaleImageYupXupBilinear");
+        gfree(srcBuf);
+        return false;
+    }
+
+    lineBuf2 = (unsigned char *)gmallocn_checkoverflow(scaledWidth, nComps);
+    if (unlikely(!lineBuf2)) {
+        error(errInternal, -1, "Couldn't allocate memory for lineBuf2 in Splash::scaleImageYupXupBilinear");
+        gfree(srcBuf);
+        gfree(lineBuf1);
+        return false;
+    }
+
     if (srcAlpha) {
-        alphaSrcBuf = (unsigned char *)gmalloc(srcWidth + 1); // + 1 pixel of padding
-        alphaLineBuf1 = (unsigned char *)gmalloc(scaledWidth);
-        alphaLineBuf2 = (unsigned char *)gmalloc(scaledWidth);
+        alphaSrcBuf = (unsigned char *)gmalloc_checkoverflow(srcWidth + 1); // + 1 pixel of padding
+        if (unlikely(!alphaSrcBuf)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaSrcBuf in Splash::scaleImageYupXupBilinear");
+            gfree(srcBuf);
+            gfree(lineBuf1);
+            gfree(lineBuf2);
+            return false;
+        }
+
+        alphaLineBuf1 = (unsigned char *)gmalloc_checkoverflow(scaledWidth);
+        if (unlikely(!alphaLineBuf1)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaLineBuf1 in Splash::scaleImageYupXupBilinear");
+            gfree(srcBuf);
+            gfree(lineBuf1);
+            gfree(lineBuf2);
+            gfree(alphaSrcBuf);
+            return false;
+        }
+
+        alphaLineBuf2 = (unsigned char *)gmalloc_checkoverflow(scaledWidth);
+        if (unlikely(!alphaLineBuf2)) {
+            error(errInternal, -1, "Couldn't allocate memory for alphaLineBuf2 in Splash::scaleImageYupXupBilinear");
+            gfree(srcBuf);
+            gfree(lineBuf1);
+            gfree(lineBuf2);
+            gfree(alphaSrcBuf);
+            gfree(alphaLineBuf1);
+            return false;
+        }
     } else {
         alphaSrcBuf = nullptr;
         alphaLineBuf1 = nullptr;
@@ -5033,7 +5157,7 @@ SplashError Splash::composite(SplashBitmap *src, int xSrc, int ySrc, int xDest, 
 
     if (src->getSeparationList()->size() > bitmap->getSeparationList()->size()) {
         for (x = bitmap->getSeparationList()->size(); x < (int)src->getSeparationList()->size(); x++) {
-            bitmap->getSeparationList()->push_back((GfxSeparationColorSpace *)((*src->getSeparationList())[x])->copy());
+            bitmap->getSeparationList()->push_back(((*src->getSeparationList())[x])->copyAsOwnType());
         }
     }
     if (src->alpha) {
@@ -5366,8 +5490,36 @@ bool Splash::gouraudTriangleShadedFill(SplashGouraudColor *shading)
 
             // this here is det( T ) == 0
             // where T is the matrix to map to barycentric coordinates.
-            if ((x[0] - x[2]) * (y[1] - y[2]) - (x[1] - x[2]) * (y[0] - y[2]) == 0) {
-                continue; // degenerate triangle.
+            {
+                int x02diff;
+                if (checkedSubtraction(x[0], x[2], &x02diff)) {
+                    continue;
+                }
+                int y12diff;
+                if (checkedSubtraction(y[1], y[2], &y12diff)) {
+                    continue;
+                }
+                int x12diff;
+                if (checkedSubtraction(x[1], x[2], &x12diff)) {
+                    continue;
+                }
+                int y02diff;
+                if (checkedSubtraction(y[0], y[2], &y02diff)) {
+                    continue;
+                }
+
+                int x02diffY12diff;
+                if (checkedMultiply(x02diff, y12diff, &x02diffY12diff)) {
+                    continue;
+                }
+                int x12diffY02diff;
+                if (checkedMultiply(x12diff, y02diff, &x12diffY02diff)) {
+                    continue;
+                }
+
+                if (x02diffY12diff - x12diffY02diff == 0) {
+                    continue; // degenerate triangle.
+                }
             }
 
             // this here initialises the scanline generation.
@@ -5770,7 +5922,7 @@ SplashError Splash::blitTransparent(SplashBitmap *src, int xSrc, int ySrc, int x
     case splashModeMono8:
         for (y = 0; y < height; ++y) {
             p = &bitmap->data[(yDest + y) * bitmap->rowSize + xDest];
-            sp = &src->data[(ySrc + y) * bitmap->rowSize + xSrc];
+            sp = &src->data[(ySrc + y) * src->rowSize + xSrc];
             for (x = 0; x < width; ++x) {
                 *p++ = *sp++;
             }
